@@ -16,6 +16,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { bookingApi, assetApi } from '../../api';
 import { format, addDays, addMonths, isSameDay, isWithinInterval, isBefore, getMonth, getYear, getDaysInMonth, startOfMonth, getDay } from 'date-fns';
+import { showCalendarSelection } from '../../utils/calendarUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -552,13 +553,36 @@ const CreateBookingScreen = ({ route, navigation }) => {
       // Simulate successful booking
       setTimeout(() => {
         setIsLoading(false);
+        
+        // Ask user if they want to add to calendar
         Alert.alert(
           'Booking Successful',
-          'Your booking has been confirmed.',
-          [{ 
-            text: 'OK', 
-            onPress: () => navigation.navigate('BookingsTab')
-          }]
+          'Your booking has been confirmed. Would you like to add it to your calendar?',
+          [
+            { 
+              text: 'Skip', 
+              onPress: () => navigation.navigate('BookingsTab')
+            },
+            {
+              text: 'Add to Calendar',
+              onPress: async () => {
+                try {
+                  const booking = {
+                    startDate: bookingData.startDate,
+                    endDate: bookingData.endDate,
+                    status: 'confirmed',
+                    notes: `${asset.name} booking`
+                  };
+                  
+                  await showCalendarSelection(booking, asset);
+                  navigation.navigate('BookingsTab');
+                } catch (error) {
+                  console.error('Error adding to calendar:', error);
+                  navigation.navigate('BookingsTab');
+                }
+              }
+            }
+          ]
         );
       }, 1000);
       

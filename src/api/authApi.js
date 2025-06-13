@@ -1,9 +1,6 @@
-import apiClient from './apiClient';
+import apiClient, { DEV_MODE } from './apiClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { testUser } from '../utils/testData';
-
-// Check if we're in development mode
-const DEV_MODE = true; // Set this to false when connecting to real backend
 
 // Auth API endpoints
 const login = async (email, password) => {
@@ -31,17 +28,30 @@ const login = async (email, password) => {
     
     // In production mode, use the real API
     const response = await apiClient.post('/auth/login', { email, password });
-    const { token, user } = response.data;
+    const { token } = response.data;
     
-    // Store token and user data
+    // Store the token first
     await AsyncStorage.setItem('token', token);
-    await AsyncStorage.setItem('user', JSON.stringify(user));
     
-    return { success: true, data: { token, user } };
+    // Now get the user data with the token
+    try {
+      const userResponse = await apiClient.get('/auth/me');
+      const user = userResponse.data.data; // Backend returns { success: true, data: user }
+      
+      // Store user data
+      await AsyncStorage.setItem('user', JSON.stringify(user));
+      
+      return { success: true, data: { token, user } };
+    } catch (userError) {
+      // If getting user fails, still return success with token but no user data
+      console.warn('Could not fetch user data after login:', userError);
+      return { success: true, data: { token, user: null } };
+    }
   } catch (error) {
+    console.error('Login error:', error);
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Login failed' 
+      error: error.response?.data?.error || 'Login failed. Please check your connection and try again.' 
     };
   }
 };
@@ -142,11 +152,11 @@ const getCurrentUser = async () => {
     
     // In production mode
     const response = await apiClient.get('/auth/me');
-    return { success: true, data: response.data };
+    return { success: true, data: response.data.data }; // Extract user from response.data.data
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to get current user' 
+      error: error.response?.data?.error || 'Failed to get current user' 
     };
   }
 };

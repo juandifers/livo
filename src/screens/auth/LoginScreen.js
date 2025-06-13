@@ -15,9 +15,7 @@ import { Formik } from 'formik';
 import * as Yup from 'yup';
 import { useAuth } from '../../context/AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
-
-// Development mode flag - should match other API files
-const DEV_MODE = true;
+import { DEV_MODE, TEST_CREDENTIALS } from '../../config';
 
 const validationSchema = Yup.object().shape({
   email: Yup.string()
@@ -67,7 +65,10 @@ const LoginScreen = ({ navigation }) => {
         </View>
         
         <Formik
-          initialValues={{ email: DEV_MODE ? 'test@example.com' : '', password: DEV_MODE ? 'password' : '' }}
+          initialValues={{ 
+            email: DEV_MODE ? TEST_CREDENTIALS.email : '', 
+            password: DEV_MODE ? TEST_CREDENTIALS.password : '' 
+          }}
           validationSchema={validationSchema}
           onSubmit={handleLogin}
         >
@@ -142,11 +143,14 @@ const LoginScreen = ({ navigation }) => {
                 </Text>
               </TouchableOpacity>
 
-              {DEV_MODE && (
+              {!DEV_MODE && (
                 <View style={styles.devModeContainer}>
-                  <Text style={styles.devModeText}>DEVELOPMENT MODE</Text>
+                  <Text style={styles.devModeText}>REAL DATA MODE</Text>
                   <Text style={styles.devModeCredentials}>
-                    Using: test@example.com / password
+                    Connected to MongoDB with demo data
+                  </Text>
+                  <Text style={styles.devModeNote}>
+                    Using: {TEST_CREDENTIALS.email} / {TEST_CREDENTIALS.password}
                   </Text>
                 </View>
               )}
@@ -283,6 +287,11 @@ const styles = StyleSheet.create({
   devModeCredentials: {
     fontSize: 12,
     color: '#F57F17',
+    textAlign: 'center',
+  },
+  devModeNote: {
+    fontSize: 12,
+    color: '#777',
     textAlign: 'center',
   },
 });

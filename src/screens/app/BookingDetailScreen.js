@@ -14,6 +14,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { bookingApi } from '../../api';
 import { format } from 'date-fns';
+import { showCalendarSelection, formatBookingDuration } from '../../utils/calendarUtils';
 
 const BookingDetailScreen = ({ route, navigation }) => {
   const { bookingId, booking: initialBooking } = route.params;
@@ -87,6 +88,27 @@ const BookingDetailScreen = ({ route, navigation }) => {
       asset: booking.asset, 
       editBooking: booking 
     });
+  };
+
+  const handleAddToCalendar = async () => {
+    if (!booking) {
+      Alert.alert('Error', 'Booking details not available');
+      return;
+    }
+
+    // Mock asset data - in a real app, this would come from the booking or API
+    const asset = {
+      name: booking.assetName || 'Aquarii',
+      location: booking.location || 'Cartagena, Colombia',
+      type: booking.assetType || 'boat'
+    };
+
+    try {
+      await showCalendarSelection(booking, asset);
+    } catch (error) {
+      console.error('Error adding to calendar:', error);
+      Alert.alert('Error', 'Unable to add booking to calendar');
+    }
   };
 
   // Get asset image based on type
@@ -192,8 +214,8 @@ const BookingDetailScreen = ({ route, navigation }) => {
           </TouchableOpacity>
           
           {/* Add To Calendar */}
-          <TouchableOpacity style={styles.addToCalendarRow}>
-            <Text style={styles.addToCalendarText}>Add To Calender</Text>
+          <TouchableOpacity style={styles.addToCalendarRow} onPress={handleAddToCalendar}>
+            <Text style={styles.addToCalendarText}>Add To Calendar</Text>
             <View style={styles.addToCalendarIcon}>
               <MaterialIcons name="event" size={24} color="#000" />
               <MaterialIcons name="chevron-right" size={24} color="#000" />

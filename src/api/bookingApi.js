@@ -1,8 +1,5 @@
-import apiClient from './apiClient';
+import apiClient, { DEV_MODE } from './apiClient';
 import { testBookings } from '../utils/testData';
-
-// Check if we're in development mode (should match authApi)
-const DEV_MODE = true;
 
 // Booking API endpoints
 const getUserBookings = async () => {
@@ -12,13 +9,23 @@ const getUserBookings = async () => {
       return { success: true, data: testBookings };
     }
     
-    // In production mode
-    const response = await apiClient.get('/bookings/me');
-    return { success: true, data: response.data };
+    // In production mode - first get current user ID, then fetch bookings for that user
+    try {
+      const userResponse = await apiClient.get('/auth/me');
+      const userId = userResponse.data.data._id;
+      
+      const response = await apiClient.get(`/bookings?user=${userId}`);
+      return { success: true, data: response.data.data }; // Extract bookings from response.data.data
+    } catch (userError) {
+      // If we can't get user ID, try the old endpoint as fallback
+      const response = await apiClient.get('/bookings');
+      return { success: true, data: response.data.data };
+    }
   } catch (error) {
+    console.error('Error fetching user bookings:', error);
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to fetch user bookings' 
+      error: error.response?.data?.error || 'Failed to fetch user bookings' 
     };
   }
 };
@@ -33,11 +40,11 @@ const getAssetBookings = async (assetId) => {
     
     // In production mode
     const response = await apiClient.get(`/bookings/asset/${assetId}`);
-    return { success: true, data: response.data };
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to fetch asset bookings' 
+      error: error.response?.data?.error || 'Failed to fetch asset bookings' 
     };
   }
 };
@@ -56,103 +63,71 @@ const getBookingById = async (bookingId) => {
     
     // In production mode
     const response = await apiClient.get(`/bookings/${bookingId}`);
-    return { success: true, data: response.data };
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to fetch booking details' 
+      error: error.response?.data?.error || 'Failed to fetch booking details' 
     };
   }
 };
 
 const createBooking = async (bookingData) => {
   try {
-    // In development mode, simulate creating a booking
+    // In development mode, simulate booking creation
     if (DEV_MODE) {
-      // Generate a fake booking with a new ID
       const newBooking = {
-        _id: 'booking' + Date.now(),
-        user: '1234567890',
-        asset: bookingData.asset,
-        startDate: bookingData.startDate,
-        endDate: bookingData.endDate,
+        _id: 'test-booking-' + Date.now(),
+        ...bookingData,
         status: 'pending',
-        notes: bookingData.notes || '',
         createdAt: new Date().toISOString()
       };
-      
-      // Add to test bookings (this won't persist after app reload)
-      testBookings.push(newBooking);
-      
       return { success: true, data: newBooking };
     }
     
     // In production mode
     const response = await apiClient.post('/bookings', bookingData);
-    return { success: true, data: response.data };
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to create booking' 
+      error: error.response?.data?.error || 'Failed to create booking' 
     };
   }
 };
 
-const updateBooking = async (bookingId, bookingData) => {
+const updateBooking = async (bookingId, updateData) => {
   try {
-    // In development mode, simulate updating a booking
+    // In development mode, simulate update
     if (DEV_MODE) {
-      const bookingIndex = testBookings.findIndex(booking => booking._id === bookingId);
-      
-      if (bookingIndex !== -1) {
-        // Update the booking in the test data
-        testBookings[bookingIndex] = {
-          ...testBookings[bookingIndex],
-          ...bookingData,
-          updatedAt: new Date().toISOString()
-        };
-        
-        return { success: true, data: testBookings[bookingIndex] };
-      } else {
-        return { success: false, error: 'Booking not found' };
-      }
+      return { success: true, data: { ...updateData, _id: bookingId } };
     }
     
     // In production mode
-    const response = await apiClient.put(`/bookings/${bookingId}`, bookingData);
-    return { success: true, data: response.data };
+    const response = await apiClient.put(`/bookings/${bookingId}`, updateData);
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to update booking' 
+      error: error.response?.data?.error || 'Failed to update booking' 
     };
   }
 };
 
 const cancelBooking = async (bookingId) => {
   try {
-    // In development mode, simulate cancelling a booking
+    // In development mode, simulate cancellation
     if (DEV_MODE) {
-      const bookingIndex = testBookings.findIndex(booking => booking._id === bookingId);
-      
-      if (bookingIndex !== -1) {
-        // Update the booking status to cancelled
-        testBookings[bookingIndex].status = 'cancelled';
-        testBookings[bookingIndex].updatedAt = new Date().toISOString();
-        
-        return { success: true, data: testBookings[bookingIndex] };
-      } else {
-        return { success: false, error: 'Booking not found' };
-      }
+      return { success: true, data: { message: 'Booking cancelled successfully' } };
     }
     
     // In production mode
-    const response = await apiClient.put(`/bookings/${bookingId}/cancel`);
-    return { success: true, data: response.data };
+    const response = await apiClient.delete(`/bookings/${bookingId}`);
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to cancel booking' 
+      error: error.response?.data?.error || 'Failed to cancel booking' 
     };
   }
 };

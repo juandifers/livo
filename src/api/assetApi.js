@@ -1,8 +1,5 @@
-import apiClient from './apiClient';
+import apiClient, { DEV_MODE } from './apiClient';
 import { testAssets } from '../utils/testData';
-
-// Check if we're in development mode (should match authApi)
-const DEV_MODE = true;
 
 // Asset API endpoints
 const getAllAssets = async () => {
@@ -14,11 +11,12 @@ const getAllAssets = async () => {
     
     // In production mode
     const response = await apiClient.get('/assets');
-    return { success: true, data: response.data };
+    return { success: true, data: response.data.data };
   } catch (error) {
+    console.error('Error fetching assets:', error);
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to fetch assets' 
+      error: error.response?.data?.error || 'Failed to fetch assets' 
     };
   }
 };
@@ -37,11 +35,11 @@ const getAssetById = async (assetId) => {
     
     // In production mode
     const response = await apiClient.get(`/assets/${assetId}`);
-    return { success: true, data: response.data };
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to fetch asset details' 
+      error: error.response?.data?.error || 'Failed to fetch asset details' 
     };
   }
 };
@@ -58,12 +56,12 @@ const getUserAssets = async () => {
     }
     
     // In production mode
-    const response = await apiClient.get('/assets/me');
-    return { success: true, data: response.data };
+    const response = await apiClient.get('/users/me/assets');
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to fetch user assets' 
+      error: error.response?.data?.error || 'Failed to fetch user assets' 
     };
   }
 };
@@ -78,11 +76,11 @@ const getAssetsByType = async (type) => {
     
     // In production mode
     const response = await apiClient.get(`/assets/type/${type}`);
-    return { success: true, data: response.data };
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to fetch assets by type' 
+      error: error.response?.data?.error || 'Failed to fetch assets by type' 
     };
   }
 };

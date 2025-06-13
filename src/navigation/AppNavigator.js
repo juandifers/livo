@@ -18,6 +18,7 @@ import BookingDetailScreen from '../screens/app/BookingDetailScreen';
 import CreateBookingScreen from '../screens/app/CreateBookingScreen';
 import ProfileScreen from '../screens/app/ProfileScreen';
 import UserProfileScreen from '../screens/app/UserProfileScreen';
+import ApiTestScreen from '../screens/app/ApiTestScreen';
 import LoadingScreen from '../screens/LoadingScreen';
 
 // Create navigation stacks
@@ -186,6 +187,7 @@ const AppNavigator = () => {
       <MainStack.Screen name="Assets" component={AssetsStackNavigator} />
       <MainStack.Screen name="BookingDetail" component={BookingDetailScreen} />
       <MainStack.Screen name="UserProfile" component={UserProfileScreen} />
+      <MainStack.Screen name="ApiTest" component={ApiTestScreen} />
     </MainStack.Navigator>
   );
 

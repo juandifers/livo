@@ -1,19 +1,17 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEV_MODE, getCurrentApiConfig } from '../config';
 
-// Check if we're in development mode
-const DEV_MODE = true;
-
-// Base URL for the backend API - Use your local IP address instead of localhost for mobile devices
-// Only relevant in production mode
-const API_URL = 'http://192.168.1.46:3000/api'; // Update this with your actual IP address
+// Get API configuration based on environment
+const apiConfig = getCurrentApiConfig();
 
 // Create an axios instance
 const apiClient = axios.create({
-  baseURL: API_URL,
+  baseURL: apiConfig.baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
+  timeout: apiConfig.timeout,
 });
 
 // Add request interceptor to add auth token to requests
@@ -51,4 +49,5 @@ apiClient.interceptors.response.use(
   }
 );
 
-export default apiClient; 
+export default apiClient;
+export { DEV_MODE }; 
