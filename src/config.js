@@ -5,6 +5,9 @@
  * Update these values based on your environment.
  */
 
+// Backend API base URL
+export const API_BASE_URL = 'http://localhost:3000/api';
+
 // Development mode flag - set to false when deploying to production
 export const DEV_MODE = false;
 
@@ -12,7 +15,7 @@ export const DEV_MODE = false;
 export const API_CONFIG = {
   // For local development with physical device
   development: {
-    baseURL: 'http://192.168.1.46:3000/api',
+    baseURL: 'http://192.168.1.45:3000/api',
     timeout: 10000
   },
   

@@ -67,7 +67,15 @@ const BookingDetailScreen = ({ route, navigation }) => {
                   ...booking,
                   status: 'cancelled'
                 });
-                Alert.alert('Success', 'Booking has been cancelled');
+                Alert.alert('Success', 'Booking has been cancelled', [
+                  {
+                    text: 'OK',
+                    onPress: () => {
+                      // Navigate back to refresh the bookings list
+                      navigation.goBack();
+                    }
+                  }
+                ]);
               } else {
                 Alert.alert('Error', result.error || 'Failed to cancel booking');
               }
@@ -83,10 +91,14 @@ const BookingDetailScreen = ({ route, navigation }) => {
   };
 
   const handleModifyBooking = () => {
-    // Navigate to modify booking screen
+    // Navigate to modify booking screen with callback
     navigation.navigate('CreateBooking', { 
       asset: booking.asset, 
-      editBooking: booking 
+      editBooking: booking,
+      onBookingUpdated: (updatedBooking) => {
+        // Update local state and refresh
+        setBooking(updatedBooking);
+      }
     });
   };
 
@@ -172,7 +184,7 @@ const BookingDetailScreen = ({ route, navigation }) => {
           {/* Asset Name and Status */}
           <View style={styles.assetNameContainer}>
             <Text style={styles.assetName}>
-              {booking.asset.name} {booking.asset.type === 'boat' ? '(T)' : '(H)'}
+              {booking.asset.name}
             </Text>
             <View style={styles.statusBadge}>
               <Text style={styles.statusText}>UPCOMING</Text>

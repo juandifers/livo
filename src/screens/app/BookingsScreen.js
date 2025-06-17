@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -13,6 +13,7 @@ import {
   Dimensions
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { bookingApi } from '../../api';
 import { format } from 'date-fns';
 
@@ -42,6 +43,15 @@ const BookingsScreen = ({ navigation }) => {
   useEffect(() => {
     loadBookings();
   }, []);
+
+  // Refresh data whenever screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoading) {
+        loadBookings();
+      }
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -121,7 +131,7 @@ const BookingsScreen = ({ navigation }) => {
         />
         <View style={styles.bookingContent}>
           <View style={styles.bookingHeader}>
-            <Text style={styles.assetName}>{item.asset.name} {item.asset.type === 'boat' ? '(T)' : '(H)'}</Text>
+            <Text style={styles.assetName}>{item.asset.name}</Text>
             <Text style={styles.assetLocation}>{item.asset.location || 'Cartagena'}</Text>
             
             <View style={styles.dateContainer}>

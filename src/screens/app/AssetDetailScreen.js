@@ -12,7 +12,7 @@ import {
   Dimensions
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { assetApi, bookingApi } from '../../api';
+import { assetApi, bookingApi, authApi } from '../../api';
 
 const { width } = Dimensions.get('window');
 
@@ -20,9 +20,25 @@ const AssetDetailScreen = ({ route, navigation }) => {
   const { assetId, asset: initialAsset } = route.params;
   const [asset, setAsset] = useState(initialAsset || null);
   const [bookings, setBookings] = useState([]);
+  const [userAllocation, setUserAllocation] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(!initialAsset);
   const [isLoadingBookings, setIsLoadingBookings] = useState(true);
+  const [isLoadingAllocation, setIsLoadingAllocation] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const loadCurrentUser = async () => {
+    try {
+      const result = await authApi.getCurrentUser();
+      if (result.success) {
+        setCurrentUser(result.data);
+        return result.data;
+      }
+    } catch (error) {
+      console.error('Error loading current user:', error);
+    }
+    return null;
+  };
 
   const loadAssetDetails = async () => {
     if (!initialAsset) {
@@ -54,9 +70,30 @@ const AssetDetailScreen = ({ route, navigation }) => {
     }
   };
 
+  const loadUserAllocation = async (user) => {
+    try {
+      setIsLoadingAllocation(true);
+      const result = await bookingApi.getUserAllocation(user._id, assetId);
+      if (result.success) {
+        setUserAllocation(result.data);
+      }
+    } catch (error) {
+      console.error('Error loading user allocation:', error);
+    } finally {
+      setIsLoadingAllocation(false);
+    }
+  };
+
   useEffect(() => {
-    loadAssetDetails();
-    loadAssetBookings();
+    const loadData = async () => {
+      const user = await loadCurrentUser();
+      await loadAssetDetails();
+      await loadAssetBookings();
+      if (user) {
+        await loadUserAllocation(user);
+      }
+    };
+    loadData();
   }, [assetId]);
 
   // Get asset image based on type
@@ -68,25 +105,28 @@ const AssetDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  // Mock ownership fraction based on owners if available
-  const getOwnershipFraction = () => {
-    if (asset?.owners?.length > 0) {
-      // Find the user's ownership
-      const userOwnership = asset.owners.find(owner => owner.isCurrentUser);
-      if (userOwnership) {
-        const fraction = userOwnership.sharePercentage / 12.5;
-        return `1/${fraction} Ownership`;
-      }
+  // Get ownership display from real data
+  const getOwnershipDisplay = () => {
+    if (userAllocation?.sharePercentage) {
+      const percentage = userAllocation.sharePercentage;
+      // Convert percentage to eighths: 12.5% = 1/8, 25% = 2/8, 50% = 4/8, etc.
+      const eighths = Math.round(percentage / 12.5);
+      return `${percentage}% (${eighths}/8 Ownership)`;
     }
-    return '1/8 Ownership'; // Default value
+    return 'No ownership data'; // Default value
   };
 
-  // Calculate used days out of total
+  // Get used days from real data
   const getUsedDays = () => {
-    // In a real app, this would come from the backend
+    if (userAllocation) {
+      return {
+        used: userAllocation.daysBooked || 0,
+        total: userAllocation.allowedDaysPerYear || 0
+      };
+    }
     return {
       used: 0,
-      total: 44 // Assuming 1/8 ownership gives 44 days
+      total: 0
     };
   };
 
@@ -140,16 +180,18 @@ const AssetDetailScreen = ({ route, navigation }) => {
         <View style={styles.detailsContainer}>
           {/* Asset Name & Type */}
           <Text style={styles.assetName}>
-            {asset.name} {asset.type === 'boat' ? '(T)' : '(H)'}
+            {asset.name}
           </Text>
           
           {/* Ownership */}
-          <Text style={styles.ownershipText}>{getOwnershipFraction()}</Text>
+          <Text style={styles.ownershipText}>
+            {isLoadingAllocation ? 'Loading...' : getOwnershipDisplay()}
+          </Text>
           
           {/* Category */}
           <View style={styles.detailSection}>
             <Text style={styles.sectionTitle}>Category</Text>
-            <Text style={styles.sectionValue}>
+            <Text style={styles.breadcrumbText}>
               {asset.type === 'boat' ? 'Boats' : 'Homes'}
             </Text>
           </View>
@@ -171,7 +213,9 @@ const AssetDetailScreen = ({ route, navigation }) => {
             <Text style={styles.sectionTitle}>Annual stay tracker</Text>
             <View style={styles.stayTrackerSection}>
               <Text style={styles.trackerTitle}>Day Used / Total Available</Text>
-              <Text style={styles.trackerValue}>{usedDays.used}/{usedDays.total}</Text>
+              <Text style={styles.trackerValue}>
+                {isLoadingAllocation ? 'Loading...' : `${usedDays.used}/${usedDays.total}`}
+              </Text>
             </View>
           </View>
           
@@ -318,6 +362,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 10
+  },
+  breadcrumbText: {
+    fontSize: 18,
+    fontWeight: 'bold'
   }
 });
 
