@@ -119,6 +119,11 @@ const BookingsScreen = ({ navigation }) => {
   const renderBookingItem = ({ item }) => {
     const daysLeft = getDaysLeft(item.endDate);
     
+    // Add null check for asset
+    if (!item.asset) {
+      return null; // Skip rendering this item if asset is null
+    }
+    
     return (
       <TouchableOpacity 
         style={styles.bookingCard}
@@ -131,8 +136,8 @@ const BookingsScreen = ({ navigation }) => {
         />
         <View style={styles.bookingContent}>
           <View style={styles.bookingHeader}>
-            <Text style={styles.assetName}>{item.asset.name}</Text>
-            <Text style={styles.assetLocation}>{item.asset.location || 'Cartagena'}</Text>
+            <Text style={styles.assetName}>{item.asset?.name || 'Unknown Asset'}</Text>
+            <Text style={styles.assetLocation}>{item.asset?.location || 'Location not available'}</Text>
             
             <View style={styles.dateContainer}>
               <Text style={styles.bookingDates}>
@@ -243,7 +248,7 @@ const BookingsScreen = ({ navigation }) => {
             />
             
             {/* Smart Scheduling Rules */}
-            <TouchableOpacity style={styles.schedulingRulesContainer}>
+            <TouchableOpacity style={styles.schedulingRulesContainer} onPress={() => navigation.navigate('SchedulingRules') }>
               <Text style={styles.schedulingRulesText}>Smart Scheduling Rules</Text>
               <MaterialIcons name="chevron-right" size={24} color="#000" />
             </TouchableOpacity>
@@ -412,7 +417,7 @@ const styles = StyleSheet.create({
   },
   schedulingRulesContainer: {
     position: 'absolute',
-    bottom: 70,
+    bottom: 50,
     left: 0,
     right: 0,
     flexDirection: 'row',

@@ -47,6 +47,7 @@ const getUserAllocation = async (userId, assetId) => {
           activeBookings: 1,
           maxActiveBookings: 24, // 50% ownership = 24 bookings (4 * 6)
           activeBookingsRemaining: 23,
+          maxStayLength: 56, // 50% ownership = 56 days (4 * 14)
           currentBookings: [],
           futureBookings: []
         }
@@ -208,6 +209,7 @@ const getAssetAvailability = async (assetId, startDate, endDate) => {
     
     // The backend now returns both calendar data and special dates
     const { calendar, specialDates } = response.data.data;
+    
     const unavailableDates = [];
     const bookings = [];
     

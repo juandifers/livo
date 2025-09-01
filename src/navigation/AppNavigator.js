@@ -14,7 +14,9 @@ import HomeScreen from '../screens/app/HomeScreen';
 import AssetsScreen from '../screens/app/AssetsScreen';
 import AssetDetailScreen from '../screens/app/AssetDetailScreen';
 import BookingsScreen from '../screens/app/BookingsScreen';
+import SchedulingRulesScreen from '../screens/app/SchedulingRulesScreen';
 import BookingDetailScreen from '../screens/app/BookingDetailScreen';
+import CancellationPoliciesScreen from '../screens/app/CancellationPoliciesScreen';
 import CreateBookingScreen from '../screens/app/CreateBookingScreen';
 import ProfileScreen from '../screens/app/ProfileScreen';
 import UserProfileScreen from '../screens/app/UserProfileScreen';
@@ -84,6 +86,15 @@ const BookingsStackNavigator = () => (
           backgroundColor: '#1E4640',
         },
         headerTintColor: '#fff',
+      }}
+    />
+    <BookingsStack.Screen 
+      name="SchedulingRules" 
+      component={SchedulingRulesScreen}
+      options={{ 
+        title: 'Scheduling Rules',
+        headerStyle: { backgroundColor: '#1E4640' },
+        headerTintColor: '#fff'
       }}
     />
   </BookingsStack.Navigator>
@@ -186,6 +197,7 @@ const AppNavigator = () => {
       <MainStack.Screen name="Tabs" component={TabNavigator} />
       <MainStack.Screen name="Assets" component={AssetsStackNavigator} />
       <MainStack.Screen name="BookingDetail" component={BookingDetailScreen} />
+      <MainStack.Screen name="CancellationPolicies" component={CancellationPoliciesScreen} />
       <MainStack.Screen name="UserProfile" component={UserProfileScreen} />
       <MainStack.Screen name="ApiTest" component={ApiTestScreen} />
     </MainStack.Navigator>

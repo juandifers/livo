@@ -29,7 +29,10 @@ const CreateBookingScreen = ({ route, navigation }) => {
   
   const [asset, setAsset] = useState(navigationAsset || null);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(new Date(2025, 7, 1)); // August 2025
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [startDate, setStartDate] = useState(null);
   const [endDate, setEndDate] = useState(null);
   const [selectedDates, setSelectedDates] = useState([]);
@@ -46,7 +49,21 @@ const CreateBookingScreen = ({ route, navigation }) => {
   const [bookingTypeInfo, setBookingTypeInfo] = useState(null);
   const [specialDates, setSpecialDates] = useState([]);
   const [userBookingsThisYear, setUserBookingsThisYear] = useState([]);
+  const [userAllocation, setUserAllocation] = useState(null);
   const monthListRef = useRef(null);
+  // Track which month is currently visible using FlatList viewability API
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    try {
+      if (Array.isArray(viewableItems) && viewableItems.length > 0) {
+        // Use the first sufficiently visible item as the current month
+        const candidate = viewableItems.find(v => v.isViewable) || viewableItems[0];
+        if (candidate && candidate.item && candidate.item.getTime) {
+          setCurrentMonth(candidate.item);
+        }
+      }
+    } catch (e) {}
+  }).current;
   
   // Load unavailable dates and special dates for the asset
   useEffect(() => {
@@ -90,12 +107,12 @@ const CreateBookingScreen = ({ route, navigation }) => {
   const loadAvailableAssets = async () => {
     try {
       console.log('🏠 Loading available assets...');
-      // Fetch real assets from API
-      const result = await assetApi.getAllAssets();
-      console.log('🏠 Assets API result:', result);
+      // Fetch user's owned assets instead of all assets
+      const result = await assetApi.getUserAssets();
+      console.log('🏠 User assets API result:', result);
       
       if (result.success) {
-        console.log('✅ Assets loaded successfully:', result.data.length, 'assets');
+        console.log('✅ User assets loaded successfully:', result.data.length, 'assets');
         setAvailableAssets(result.data);
         
         // If no asset is currently selected and we have assets, select the first one
@@ -104,12 +121,12 @@ const CreateBookingScreen = ({ route, navigation }) => {
           setAsset(result.data[0]);
         }
       } else {
-        console.error('❌ Error loading assets:', result.error);
+        console.error('❌ Error loading user assets:', result.error);
         // Fallback to empty array if API fails
         setAvailableAssets([]);
       }
     } catch (error) {
-      console.error('❌ Error loading assets:', error.message);
+      console.error('❌ Error loading user assets:', error.message);
       setAvailableAssets([]);
     }
   };
@@ -119,6 +136,19 @@ const CreateBookingScreen = ({ route, navigation }) => {
     if (asset && user) {
       loadAssetAvailability();
       loadCurrentUserBookings();
+      // Load allocation for current user and selected asset
+      (async () => {
+        try {
+          const result = await bookingApi.getUserAllocation(user._id, asset._id);
+          if (result.success) {
+            setUserAllocation(result.data);
+          } else {
+            setUserAllocation(null);
+          }
+        } catch (e) {
+          setUserAllocation(null);
+        }
+      })();
     }
   }, [asset, user]);
   
@@ -134,14 +164,13 @@ const CreateBookingScreen = ({ route, navigation }) => {
   );
   
   const generateMonths = () => {
-    // Generate 24 months starting from current month
+    // Generate 24 months starting from the current month
     const generatedMonths = [];
-    const startMonth = new Date(2025, 0, 1); // January 2025
-    
+    const start = new Date();
+    start.setDate(1);
     for (let i = 0; i < 24; i++) {
-      generatedMonths.push(addMonths(startMonth, i));
+      generatedMonths.push(addMonths(start, i));
     }
-    
     setMonths(generatedMonths);
   };
   
@@ -160,18 +189,17 @@ const CreateBookingScreen = ({ route, navigation }) => {
       if (!editBooking) {
         // Only reset dates if we're not editing an existing booking
         console.log('🧹 Resetting selected dates for new booking');
-        setStartDate(null);
-        setEndDate(null);
-        setSelectedDates([]);
+      setStartDate(null);
+      setEndDate(null);
+      setSelectedDates([]);
       }
       
-      // Calculate date range for availability (current month + next 2 months)
+      // Calculate date range for availability (current month + next 24 months)
       const startMonth = new Date();
       startMonth.setDate(1); // First day of current month
-      
       const endMonth = new Date(startMonth);
-      endMonth.setMonth(endMonth.getMonth() + 3); // 3 months ahead
-      endMonth.setDate(0); // Last day of the 3rd month
+      endMonth.setMonth(endMonth.getMonth() + 24); // 24 months ahead
+      endMonth.setDate(0); // Last day of the final month
       
       console.log('📅 Fetching availability from:', startMonth.toDateString(), 'to:', endMonth.toDateString());
       
@@ -193,7 +221,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
           specialDatesType2: (specialDates.type2 || []).length,
           bookings: bookings.length
         });
-        
+      
         // Convert string dates to Date objects
         const unavailable = unavailableDates.map(dateStr => new Date(dateStr + 'T00:00:00'));
         const special1 = (specialDates.type1 || []).map(dateStr => new Date(dateStr + 'T00:00:00'));
@@ -222,7 +250,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
           }
           
           const currentDate = new Date(startDate);
-          
+      
           // Only add to unavailable dates if it's NOT the current user's booking
           const isCurrentUserBooking = booking.userId === user?._id || booking.user === user?._id;
           
@@ -239,11 +267,11 @@ const CreateBookingScreen = ({ route, navigation }) => {
           specialType1: special1.length,
           specialType2: special2.length
         });
-        
-        setUnavailableDates(unavailable);
-        setSpecialDatesType1(special1);
-        setSpecialDatesType2(special2);
-        
+      
+      setUnavailableDates(unavailable);
+      setSpecialDatesType1(special1);
+      setSpecialDatesType2(special2);
+      
         // Store special dates for validation (convert to expected format)
         const specialDatesForValidation = [
           ...(specialDates.type1 || []).map(dateStr => ({
@@ -341,53 +369,53 @@ const CreateBookingScreen = ({ route, navigation }) => {
       console.log('📅 Processing date selection for:', normalizedDate.toDateString());
       console.log('📊 Current state - startDate:', startDate?.toDateString(), 'endDate:', endDate?.toDateString());
 
-      // Save the current scroll position
-      let currentScrollOffset = 0;
-      if (monthListRef.current) {
-        // Get current scroll offset if available
+    // Save the current scroll position
+    let currentScrollOffset = 0;
+    if (monthListRef.current) {
+      // Get current scroll offset if available
         try {
-          currentScrollOffset = monthListRef.current._scrollMetrics?.offset || 0;
+      currentScrollOffset = monthListRef.current._scrollMetrics?.offset || 0;
           console.log('📜 Current scroll offset:', currentScrollOffset);
         } catch (scrollError) {
           console.warn('⚠️ Could not get scroll offset:', scrollError);
           currentScrollOffset = 0;
         }
-      }
+    }
 
-      // Check if date is unavailable - quick check first
+    // Check if date is unavailable - quick check first
       console.log('🔍 Checking if date is unavailable for booking...');
       if (isDateUnavailableForBooking(normalizedDate)) {
         console.log('❌ Date is unavailable for booking');
-        Alert.alert('Date Unavailable', 'This date is not available for booking.');
-        return;
-      }
+      Alert.alert('Date Unavailable', 'This date is not available for booking.');
+      return;
+    }
       console.log('✅ Date is available for booking');
-      
-      // If no start date is selected, set it immediately
-      if (!startDate) {
+    
+    // If no start date is selected, set it immediately
+    if (!startDate) {
         console.log('🎯 Setting as start date (no previous start date)');
         setStartDate(normalizedDate);
         setSelectedDates([normalizedDate]);
-        
-        // Restore scroll position after state update
-        setTimeout(() => {
-          if (monthListRef.current && currentScrollOffset > 0) {
+      
+      // Restore scroll position after state update
+      setTimeout(() => {
+        if (monthListRef.current && currentScrollOffset > 0) {
             try {
-              monthListRef.current.scrollToOffset({ 
-                offset: currentScrollOffset, 
-                animated: false 
-              });
+          monthListRef.current.scrollToOffset({ 
+            offset: currentScrollOffset, 
+            animated: false 
+          });
               console.log('📜 Scroll position restored');
             } catch (scrollError) {
               console.warn('⚠️ Could not restore scroll position:', scrollError);
             }
-          }
-        }, 10);
-        return;
-      }
-      
-      // If start date is selected but no end date
-      if (startDate && !endDate) {
+        }
+      }, 10);
+      return;
+    }
+    
+    // If start date is selected but no end date
+    if (startDate && !endDate) {
         console.log('🎯 Processing end date selection...');
         
         // Validate startDate before comparison
@@ -398,47 +426,47 @@ const CreateBookingScreen = ({ route, navigation }) => {
           return;
         }
         
-        // If selected date is before start date, make it the new start date
+      // If selected date is before start date, make it the new start date
         if (isBefore(normalizedDate, startDate)) {
           console.log('🔄 Selected date is before start date, making it new start date');
           setStartDate(normalizedDate);
           setSelectedDates([normalizedDate]);
-          
-          // Restore scroll position after state update
-          setTimeout(() => {
-            if (monthListRef.current && currentScrollOffset > 0) {
+        
+        // Restore scroll position after state update
+        setTimeout(() => {
+          if (monthListRef.current && currentScrollOffset > 0) {
               try {
-                monthListRef.current.scrollToOffset({ 
-                  offset: currentScrollOffset, 
-                  animated: false 
-                });
+            monthListRef.current.scrollToOffset({ 
+              offset: currentScrollOffset, 
+              animated: false 
+            });
                 console.log('📜 Scroll position restored (new start date)');
               } catch (scrollError) {
                 console.warn('⚠️ Could not restore scroll position:', scrollError);
               }
-            }
-          }, 10);
-          return;
-        }
-        
-        // For performance, first check if start and end dates are unavailable
+          }
+        }, 10);
+        return;
+      }
+      
+      // For performance, first check if start and end dates are unavailable
         console.log('🔍 Checking if date range is valid...');
         if (isDateUnavailableForBooking(startDate) || isDateUnavailableForBooking(normalizedDate)) {
           console.log('❌ Date range includes unavailable dates');
-          Alert.alert('Invalid Selection', 'Your selection includes unavailable dates.');
-          return;
-        }
-        
+        Alert.alert('Invalid Selection', 'Your selection includes unavailable dates.');
+        return;
+      }
+      
         console.log('✅ Date range is valid, setting end date');
-        // Set the end date immediately to provide visual feedback
+      // Set the end date immediately to provide visual feedback
         setEndDate(normalizedDate);
-        
-        // Then calculate the date range in a setTimeout to prevent UI blocking
-        setTimeout(() => {
+      
+      // Then calculate the date range in a setTimeout to prevent UI blocking
+      setTimeout(() => {
           console.log('⏰ Starting date range calculation...');
           try {
-            const datesInRange = [];
-            let currentDate = new Date(startDate);
+        const datesInRange = [];
+        let currentDate = new Date(startDate);
             const endDateValue = new Date(normalizedDate);
             
             console.log('📅 Calculating range from:', currentDate.toDateString(), 'to:', endDateValue.toDateString());
@@ -451,13 +479,13 @@ const CreateBookingScreen = ({ route, navigation }) => {
             }
             
             console.log('✅ Date range validation passed');
-            
-            // Optimization: limit range check to 90 days maximum
-            let dateCount = 0;
-            const maxDays = 90;
-            
+        
+        // Optimization: limit range check to 90 days maximum
+        let dateCount = 0;
+        const maxDays = 90;
+        
             console.log('🔄 Starting date iteration...');
-            while (currentDate <= endDateValue && dateCount < maxDays) {
+        while (currentDate <= endDateValue && dateCount < maxDays) {
               // Create a new date object to avoid reference issues
               datesInRange.push(new Date(currentDate.getTime()));
               
@@ -478,7 +506,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                 break;
               }
               
-              dateCount++;
+          dateCount++;
               
               // Safety check to prevent infinite loops
               if (dateCount > maxDays) {
@@ -488,16 +516,16 @@ const CreateBookingScreen = ({ route, navigation }) => {
             }
             
             console.log(`✅ Calculated ${datesInRange.length} dates in range`);
-            setSelectedDates(datesInRange);
-            
+        setSelectedDates(datesInRange);
+        
             console.log('📜 Attempting to restore scroll position...');
-            // Restore scroll position after state update
-            if (monthListRef.current && currentScrollOffset > 0) {
+        // Restore scroll position after state update
+        if (monthListRef.current && currentScrollOffset > 0) {
               try {
-                monthListRef.current.scrollToOffset({ 
-                  offset: currentScrollOffset, 
-                  animated: false 
-                });
+          monthListRef.current.scrollToOffset({ 
+            offset: currentScrollOffset, 
+            animated: false 
+          });
                 console.log('✅ Scroll position restored successfully');
               } catch (scrollError) {
                 console.warn('⚠️ Could not restore scroll position:', scrollError);
@@ -507,30 +535,30 @@ const CreateBookingScreen = ({ route, navigation }) => {
             console.error('❌ Error calculating date range:', error);
             // Fallback to just start and end dates
             setSelectedDates([startDate, normalizedDate]);
-          }
-        }, 10);
-      } else {
-        // Both dates are selected, start a new selection
+        }
+      }, 10);
+    } else {
+      // Both dates are selected, start a new selection
         console.log('🔄 Both dates selected, starting new selection');
         setStartDate(normalizedDate);
-        setEndDate(null);
+      setEndDate(null);
         setSelectedDates([normalizedDate]);
-        
-        // Restore scroll position after state update
-        setTimeout(() => {
-          if (monthListRef.current && currentScrollOffset > 0) {
+      
+      // Restore scroll position after state update
+      setTimeout(() => {
+        if (monthListRef.current && currentScrollOffset > 0) {
             try {
-              monthListRef.current.scrollToOffset({ 
-                offset: currentScrollOffset, 
-                animated: false 
-              });
+          monthListRef.current.scrollToOffset({ 
+            offset: currentScrollOffset, 
+            animated: false 
+          });
               console.log('📜 Scroll position restored (new selection)');
             } catch (scrollError) {
               console.warn('⚠️ Could not restore scroll position:', scrollError);
             }
-          }
-        }, 10);
-      }
+        }
+      }, 10);
+    }
       
       console.log('✅ handleDateSelection completed successfully');
     } catch (error) {
@@ -557,18 +585,18 @@ const CreateBookingScreen = ({ route, navigation }) => {
   const isDateSelected = (date) => {
     try {
       if (!date || !date.getTime || isNaN(date.getTime()) || (!startDate && !endDate)) return false;
-      
-      if (startDate && !endDate) {
+    
+    if (startDate && !endDate) {
         return startDate.getTime && !isNaN(startDate.getTime()) && isSameDay(date, startDate);
-      }
-      
-      if (startDate && endDate) {
+    }
+    
+    if (startDate && endDate) {
         return startDate.getTime && endDate.getTime && 
                !isNaN(startDate.getTime()) && !isNaN(endDate.getTime()) &&
                isWithinInterval(date, { start: startDate, end: endDate });
-      }
-      
-      return false;
+    }
+    
+    return false;
     } catch (error) {
       console.error('Error in isDateSelected:', error);
       return false;
@@ -601,11 +629,11 @@ const CreateBookingScreen = ({ route, navigation }) => {
   
   const isMiddleDate = (date) => {
     try {
-      if (!startDate || !endDate || !date) return false;
+    if (!startDate || !endDate || !date) return false;
       if (!startDate.getTime || !endDate.getTime || !date.getTime) return false;
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || isNaN(date.getTime())) return false;
       
-      return isDateSelected(date) && !isStartDate(date) && !isEndDate(date);
+    return isDateSelected(date) && !isStartDate(date) && !isEndDate(date);
     } catch (error) {
       console.error('Error in isMiddleDate:', error);
       return false;
@@ -616,15 +644,15 @@ const CreateBookingScreen = ({ route, navigation }) => {
     try {
       if (!date || !date.getTime || isNaN(date.getTime())) return false;
       if (!Array.isArray(unavailableDates)) return false;
-      
-      // Compare by timestamp for better performance
-      const dateTime = date.getTime();
-      return unavailableDates.some(unavailableDate => {
+    
+    // Compare by timestamp for better performance
+    const dateTime = date.getTime();
+    return unavailableDates.some(unavailableDate => {
         return unavailableDate && 
                unavailableDate.getTime && 
                !isNaN(unavailableDate.getTime()) &&
                unavailableDate.getTime() === dateTime;
-      });
+    });
     } catch (error) {
       console.error('Error in isDateUnavailable:', error);
       return false;
@@ -636,7 +664,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
       if (!date || !date.getTime || isNaN(date.getTime())) return false;
       if (!Array.isArray(specialDatesType1)) return false;
       
-      const dateTime = date.getTime();
+    const dateTime = date.getTime();
       return specialDatesType1.some(specialDate => 
         specialDate && 
         specialDate.getTime && 
@@ -715,17 +743,17 @@ const CreateBookingScreen = ({ route, navigation }) => {
         return { weeks: [], monthYear: 'Invalid Month' };
       }
       
-      const daysInMonth = getDaysInMonth(month);
-      const firstDayOfMonth = startOfMonth(month);
-      const startingDayOfWeek = getDay(firstDayOfMonth);
-      
-      // Create array of dates for the month
-      const dates = [];
-      for (let i = 0; i < startingDayOfWeek; i++) {
-        dates.push(null); // Empty cells for days before the 1st of the month
-      }
-      
-      for (let i = 1; i <= daysInMonth; i++) {
+    const daysInMonth = getDaysInMonth(month);
+    const firstDayOfMonth = startOfMonth(month);
+    const startingDayOfWeek = getDay(firstDayOfMonth);
+    
+    // Create array of dates for the month
+    const dates = [];
+    for (let i = 0; i < startingDayOfWeek; i++) {
+      dates.push(null); // Empty cells for days before the 1st of the month
+    }
+    
+    for (let i = 1; i <= daysInMonth; i++) {
         const dateObj = new Date(month.getFullYear(), month.getMonth(), i);
         // Validate the created date
         if (dateObj.getTime && !isNaN(dateObj.getTime())) {
@@ -734,24 +762,24 @@ const CreateBookingScreen = ({ route, navigation }) => {
           console.warn('Invalid date created in generateCalendarData:', dateObj);
           dates.push(null);
         }
-      }
+    }
 
-      // Group dates into weeks
-      const weeks = [];
-      let week = [];
-      
-      dates.forEach((date, index) => {
-        week.push(date);
-        if (week.length === 7 || index === dates.length - 1) {
-          // Pad the last week with null if needed
-          while (week.length < 7) {
-            week.push(null);
-          }
-          weeks.push([...week]); // Create a copy of the week array
-          week = [];
+    // Group dates into weeks
+    const weeks = [];
+    let week = [];
+    
+    dates.forEach((date, index) => {
+      week.push(date);
+      if (week.length === 7 || index === dates.length - 1) {
+        // Pad the last week with null if needed
+        while (week.length < 7) {
+          week.push(null);
         }
-      });
-      
+          weeks.push([...week]); // Create a copy of the week array
+        week = [];
+      }
+    });
+    
       const monthYear = format(month, 'MMMM yyyy');
       return { weeks, monthYear };
     } catch (error) {
@@ -770,20 +798,20 @@ const CreateBookingScreen = ({ route, navigation }) => {
         console.warn('Invalid date object in renderDayCell:', date);
         return <View key={`invalid-${index}`} style={styles.emptyCell} />;
       }
-      
-      const isSelected = isDateSelected(date);
-      const isUnavailable = isDateUnavailable(date);
+    
+    const isSelected = isDateSelected(date);
+    const isUnavailable = isDateUnavailable(date);
       const isCurrentUserBooking = isCurrentUserBookingDate(date);
       const isOtherUserBooking = isUnavailable && !isCurrentUserBooking;
-      const isSpecialType1 = isSpecialDateType1(date);
-      const isSpecialType2 = isSpecialDateType2(date);
-      const isStart = isStartDate(date);
-      const isEnd = isEndDate(date);
-      
-      // Get adjacent dates in the week to check for continuous selection
+    const isSpecialType1 = isSpecialDateType1(date);
+    const isSpecialType2 = isSpecialDateType2(date);
+    const isStart = isStartDate(date);
+    const isEnd = isEndDate(date);
+    
+    // Get adjacent dates in the week to check for continuous selection
       const prevDate = index > 0 && week[index - 1] ? week[index - 1] : null;
       const nextDate = index < 6 && week[index + 1] ? week[index + 1] : null;
-      
+    
       // Safely check if adjacent dates are selected
       const isPrevSelected = prevDate && prevDate.getTime && !isNaN(prevDate.getTime()) && isDateSelected(prevDate);
       const isNextSelected = nextDate && nextDate.getTime && !isNaN(nextDate.getTime()) && isDateSelected(nextDate);
@@ -791,11 +819,11 @@ const CreateBookingScreen = ({ route, navigation }) => {
       // For current user bookings, check adjacent user booking dates for styling
       const isPrevUserBooking = prevDate && prevDate.getTime && !isNaN(prevDate.getTime()) && isCurrentUserBookingDate(prevDate);
       const isNextUserBooking = nextDate && nextDate.getTime && !isNaN(nextDate.getTime()) && isCurrentUserBookingDate(nextDate);
-      
-      // Determine cell styles based on selection state
-      let cellStyle = [styles.dayCell];
-      let textStyle = [styles.dayText];
-      
+    
+    // Determine cell styles based on selection state
+    let cellStyle = [styles.dayCell];
+    let textStyle = [styles.dayText];
+    
       // Handle current user's existing bookings (show in green like selected)
       if (isCurrentUserBooking && !isSelected) {
         cellStyle.push(styles.userBookingDay);
@@ -814,56 +842,56 @@ const CreateBookingScreen = ({ route, navigation }) => {
       }
       
       // Handle new selection (overrides user booking styling)
-      if (isSelected) {
+    if (isSelected) {
         cellStyle = [styles.dayCell, styles.selectedDay];
         textStyle = [styles.dayText, styles.selectedDayText];
-        
-        if (isStart || !isPrevSelected) {
-          cellStyle.push(styles.startDay);
-        }
-        
-        if (isEnd || !isNextSelected) {
-          cellStyle.push(styles.endDay);
-        }
-        
-        if ((isPrevSelected && isNextSelected) || (!isStart && !isEnd)) {
-          cellStyle.push(styles.middleDay);
-        }
+      
+      if (isStart || !isPrevSelected) {
+        cellStyle.push(styles.startDay);
       }
       
+      if (isEnd || !isNextSelected) {
+        cellStyle.push(styles.endDay);
+      }
+      
+      if ((isPrevSelected && isNextSelected) || (!isStart && !isEnd)) {
+        cellStyle.push(styles.middleDay);
+      }
+    }
+    
       // Handle other users' bookings (crossed out)
       if (isOtherUserBooking) {
-        cellStyle.push(styles.unavailableDay);
-        textStyle.push(styles.unavailableDayText);
-      }
+      cellStyle.push(styles.unavailableDay);
+      textStyle.push(styles.unavailableDayText);
+    }
       
       // Get the day number safely
       const dayNumber = date.getDate();
-      
-      return (
-        <TouchableOpacity
+    
+    return (
+      <TouchableOpacity
           key={`day-${date.getTime()}`}
-          style={cellStyle}
-          onPress={() => handleDateSelection(date)}
+        style={cellStyle}
+        onPress={() => handleDateSelection(date)}
           disabled={isOtherUserBooking}
-          activeOpacity={0.7} // Prevent full opacity change on press
-        >
+        activeOpacity={0.7} // Prevent full opacity change on press
+      >
           <Text style={textStyle}>{dayNumber}</Text>
           {isSpecialType1 && !isOtherUserBooking && (
             <View style={styles.specialDateIndicator}>
-              <MaterialIcons name="star" size={16} color={(isSelected || isCurrentUserBooking) ? "#fff" : "#FFD700"} />
+              <MaterialIcons name="star" size={16} color={(isSelected || isCurrentUserBooking) ? "#fff" : "#ff6b6b"} />
             </View>
           )}
           {isSpecialType2 && !isOtherUserBooking && (
             <View style={styles.specialDateIndicator}>
-              <MaterialIcons name="star-outline" size={16} color={(isSelected || isCurrentUserBooking) ? "#fff" : "#FFD700"} />
+              <MaterialIcons name="star" size={16} color={(isSelected || isCurrentUserBooking) ? "#fff" : "#6200ee"} />
             </View>
           )}
           {isOtherUserBooking && (
-            <View style={styles.strikethrough} />
-          )}
-        </TouchableOpacity>
-      );
+          <View style={styles.strikethrough} />
+        )}
+      </TouchableOpacity>
+    );
     } catch (error) {
       console.error('Error rendering day cell:', error, 'Date:', date);
       return <View key={`error-${index}`} style={styles.emptyCell} />;
@@ -875,34 +903,34 @@ const CreateBookingScreen = ({ route, navigation }) => {
     try {
       if (!item) return null;
       
-      const { weeks, monthYear } = generateCalendarData(item);
-      
-      return (
-        <View style={styles.monthContainer}>
-          <Text style={styles.monthTitle}>{monthYear}</Text>
-          <View style={styles.weekdaysHeader}>
-            <Text style={styles.weekdayText}>Sun</Text>
-            <Text style={styles.weekdayText}>Mon</Text>
-            <Text style={styles.weekdayText}>Tue</Text>
-            <Text style={styles.weekdayText}>Wed</Text>
-            <Text style={styles.weekdayText}>Thu</Text>
-            <Text style={styles.weekdayText}>Fri</Text>
-            <Text style={styles.weekdayText}>Sat</Text>
-          </View>
-          
-          <View style={styles.weeksContainer}>
-            {weeks && weeks.map((weekDates, weekIndex) => (
-              <View key={`week-${weekIndex}`} style={styles.weekRow}>
-                {weekDates && weekDates.map((date, dayIndex) => (
-                  <View key={`day-${dayIndex}`} style={styles.dayCellContainer}>
-                    {renderDayCell(date, dayIndex, weekDates)}
-                  </View>
-                ))}
-              </View>
-            ))}
-          </View>
+    const { weeks, monthYear } = generateCalendarData(item);
+    
+    return (
+      <View style={styles.monthContainer}>
+        <Text style={styles.monthTitle}>{monthYear}</Text>
+        <View style={styles.weekdaysHeader}>
+          <Text style={styles.weekdayText}>Sun</Text>
+          <Text style={styles.weekdayText}>Mon</Text>
+          <Text style={styles.weekdayText}>Tue</Text>
+          <Text style={styles.weekdayText}>Wed</Text>
+          <Text style={styles.weekdayText}>Thu</Text>
+          <Text style={styles.weekdayText}>Fri</Text>
+          <Text style={styles.weekdayText}>Sat</Text>
         </View>
-      );
+        
+        <View style={styles.weeksContainer}>
+            {weeks && weeks.map((weekDates, weekIndex) => (
+            <View key={`week-${weekIndex}`} style={styles.weekRow}>
+                {weekDates && weekDates.map((date, dayIndex) => (
+                <View key={`day-${dayIndex}`} style={styles.dayCellContainer}>
+                    {renderDayCell(date, dayIndex, weekDates)}
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      </View>
+    );
     } catch (error) {
       console.error('Error rendering calendar month:', error);
       return (
@@ -950,9 +978,9 @@ const CreateBookingScreen = ({ route, navigation }) => {
       
       if (!startDate || !endDate || selectedDates.length === 0) {
         Alert.alert('Selection Required', 'Please select your booking dates.');
-        return;
-      }
-
+      return;
+    }
+    
       if (!asset || !asset._id) {
         Alert.alert('Asset Required', 'Please select an asset to book.');
         return;
@@ -977,10 +1005,10 @@ const CreateBookingScreen = ({ route, navigation }) => {
       }
       
       // Prepare booking data with determined booking type
-      const bookingData = {
+    const bookingData = {
         assetId: asset._id,
-        startDate,
-        endDate,
+      startDate,
+      endDate,
         bookingType: validationResults.bookingType || 'Short',
       };
       
@@ -1013,21 +1041,21 @@ const CreateBookingScreen = ({ route, navigation }) => {
       if (validationResults.warnings && Array.isArray(validationResults.warnings) && validationResults.warnings.length > 0) {
         confirmationMessage += '\n\nWarnings:\n' + validationResults.warnings.join('\n');
       }
-      
-      Alert.alert(
-        'Confirm Booking',
+    
+    Alert.alert(
+      'Confirm Booking',
         confirmationMessage,
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel'
-          },
-          {
-            text: 'Confirm',
-            onPress: () => submitBooking(bookingData)
-          }
-        ]
-      );
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Confirm',
+          onPress: () => submitBooking(bookingData)
+        }
+      ]
+    );
     } catch (error) {
       console.error('Error in handleContinueToBook:', error);
       Alert.alert('Error', 'There was an error preparing your booking. Please try again.');
@@ -1057,8 +1085,8 @@ const CreateBookingScreen = ({ route, navigation }) => {
       
       console.log('Booking API result:', result);
       
-      setIsLoading(false);
-      
+        setIsLoading(false);
+        
       if (result && result.success) {
         // Call the callback if provided (for edit operations)
         if (onBookingUpdated && typeof onBookingUpdated === 'function') {
@@ -1151,7 +1179,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
     // Use same calculation as backend for consistency
     const daysCount = Math.ceil(
       (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-    );
+    ) + 1;  // Add 1 to include both start and end dates
     const nightsCount = Math.max(0, daysCount - 1);
     
     return `${nightsCount} nights, ${daysCount} days`;
@@ -1241,8 +1269,14 @@ const CreateBookingScreen = ({ route, navigation }) => {
       
       console.log('Starting booking validation...');
       
-      // Get all required data for validation
-      const bookingData = { startDate, endDate };
+      // Get all required data for validation (include backend allocation, bookings, and special dates calendar if available later)
+      const bookingData = { 
+        startDate, 
+        endDate,
+        allocationInfo: userAllocation || null,
+        allUserBookings: currentUserBookings || [],
+        specialDatesCalendar: { type1: specialDatesType1, type2: specialDatesType2 }
+      };
       
       // Get existing CONFIRMED bookings from currentUserBookings and other users' bookings
       // We need to fetch all bookings for this asset, not just unavailable dates
@@ -1343,96 +1377,96 @@ const CreateBookingScreen = ({ route, navigation }) => {
       {(() => {
         try {
           return (
-            <View style={styles.container}>
-              <View style={styles.header}>
+      <View style={styles.container}>
+        <View style={styles.header}>
                 <TouchableOpacity 
                   style={styles.backButton}
                   onPress={() => navigation.goBack()}
                 >
                   <MaterialIcons name="arrow-back" size={24} color="#000" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Book My Stay</Text>
-                <TouchableOpacity style={styles.helpButton}>
-                  <MaterialIcons name="help" size={24} color="#000" />
-                </TouchableOpacity>
-              </View>
-              
-              {/* Asset Selector */}
-              <TouchableOpacity style={styles.assetSelector} onPress={toggleAssetDropdown}>
-                <Text style={styles.assetSelectorText}>
+          <Text style={styles.headerTitle}>Book My Stay</Text>
+          <TouchableOpacity style={styles.helpButton}>
+            <MaterialIcons name="help" size={24} color="#000" />
+          </TouchableOpacity>
+        </View>
+        
+        {/* Asset Selector */}
+        <TouchableOpacity style={styles.assetSelector} onPress={toggleAssetDropdown}>
+          <Text style={styles.assetSelectorText}>
                   {asset && asset.name ? asset.name : 'Select an Asset'}
-                </Text>
-                <MaterialIcons name="keyboard-arrow-down" size={24} color="#000" />
-              </TouchableOpacity>
-              
-              {/* Asset Dropdown */}
-              <Modal
-                visible={showAssetDropdown}
-                transparent={true}
-                animationType="fade"
-                onRequestClose={() => setShowAssetDropdown(false)}
-              >
-                <TouchableOpacity 
-                  style={styles.dropdownOverlay}
-                  activeOpacity={1}
-                  onPress={() => setShowAssetDropdown(false)}
-                >
-                  <View style={styles.dropdownContainer}>
-                    <Text style={styles.dropdownTitle}>Select an Asset</Text>
-                    <FlatList
-                      data={availableAssets}
-                      renderItem={renderAssetItem}
+          </Text>
+          <MaterialIcons name="keyboard-arrow-down" size={24} color="#000" />
+        </TouchableOpacity>
+        
+        {/* Asset Dropdown */}
+        <Modal
+          visible={showAssetDropdown}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowAssetDropdown(false)}
+        >
+          <TouchableOpacity 
+            style={styles.dropdownOverlay}
+            activeOpacity={1}
+            onPress={() => setShowAssetDropdown(false)}
+          >
+            <View style={styles.dropdownContainer}>
+              <Text style={styles.dropdownTitle}>Select an Asset</Text>
+              <FlatList
+                data={availableAssets}
+                renderItem={renderAssetItem}
                       keyExtractor={(item, index) => item?._id || `asset-${index}`}
-                      contentContainerStyle={styles.dropdownList}
-                    />
-                  </View>
-                </TouchableOpacity>
-              </Modal>
+                contentContainerStyle={styles.dropdownList}
+              />
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
-              {/* Month Navigation */}
-              <View style={styles.monthNavigation}>
-                <TouchableOpacity onPress={handlePrevMonth} style={styles.navButton}>
-                  <MaterialIcons name="chevron-left" size={36} color="#fff" />
-                </TouchableOpacity>
-                <Text style={styles.currentMonth}>
-                  {format(currentMonth, 'MMMM yyyy')}
-                </Text>
-                <TouchableOpacity onPress={handleNextMonth} style={styles.navButton}>
-                  <MaterialIcons name="chevron-right" size={36} color="#fff" />
-                </TouchableOpacity>
-              </View>
-              
-              {/* Calendar */}
+        {/* Month Navigation */}
+        <View style={styles.monthNavigation}>
+          <TouchableOpacity onPress={handlePrevMonth} style={styles.navButton}>
+            <MaterialIcons name="chevron-left" size={36} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.currentMonth}>
+            {format(currentMonth, 'MMMM yyyy')}
+          </Text>
+          <TouchableOpacity onPress={handleNextMonth} style={styles.navButton}>
+            <MaterialIcons name="chevron-right" size={36} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        
+        {/* Calendar */}
               {(() => {
                 try {
                   return (
-                    <View style={styles.calendarContainer}>
-                      <FlatList
-                        ref={monthListRef}
-                        data={months}
-                        renderItem={renderCalendarMonth}
-                        keyExtractor={(item) => item.toISOString()}
-                        showsVerticalScrollIndicator={false}
-                        initialScrollIndex={7} // Start at August 2025
-                        getItemLayout={getItemLayout}
-                        maxToRenderPerBatch={3}
-                        windowSize={7}
-                        scrollEventThrottle={16}
-                        removeClippedSubviews={true}
-                        keyboardShouldPersistTaps="handled"
-                        contentContainerStyle={styles.calendarContent}
-                        onScrollToIndexFailed={() => {}}
-                        maintainVisibleContentPosition={{
-                          minIndexForVisible: 0
-                        }}
-                        onMomentumScrollEnd={(event) => {
-                          const index = Math.floor(event.nativeEvent.contentOffset.y / 340);
-                          if (index >= 0 && index < months.length) {
-                            setCurrentMonth(months[index]);
-                          }
-                        }}
-                      />
-                    </View>
+        <View style={styles.calendarContainer}>
+          <FlatList
+            ref={monthListRef}
+            data={months}
+            renderItem={renderCalendarMonth}
+            keyExtractor={(item) => item.toISOString()}
+            showsVerticalScrollIndicator={false}
+            initialScrollIndex={0}
+            getItemLayout={getItemLayout}
+            maxToRenderPerBatch={3}
+            windowSize={7}
+            scrollEventThrottle={16}
+            removeClippedSubviews={true}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.calendarContent}
+            onScrollToIndexFailed={() => {}}
+            maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+            onMomentumScrollEnd={(event) => {
+              try {
+                const index = Math.round(event.nativeEvent.contentOffset.y / 340);
+                if (index >= 0 && index < months.length) setCurrentMonth(months[index]);
+              } catch (e) {}
+            }}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+          />
+        </View>
                   );
                 } catch (calendarError) {
                   console.error('💥 CRASH in calendar render:', calendarError);
@@ -1494,31 +1528,18 @@ const CreateBookingScreen = ({ route, navigation }) => {
                                         type.replace('type1', 'Type 1').replace('type2', 'Type 2')
                                       ).join(' & ')}
                                     </Text>
-                                  </View>
-                                  <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Standard allocation impact:</Text>
-                                    <Text style={styles.allocationValue}>{bookingLength} days deducted</Text>
-                                  </View>
-                                  <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Standard days remaining:</Text>
-                                    <Text style={styles.allocationValue}>{remainingAfterBooking} days</Text>
-                                  </View>
+                                  </View>                    
                                 </>
                               );
                             } else if (validationResults.bookingType === 'VeryShort') {
+                              const extraCost = bookingLength > remainingDays;
                               return (
                                 <>
                                   <View style={styles.allocationRow}>
                                     <Text style={styles.allocationLabel}>Last minute booking:</Text>
-                                    <Text style={[styles.allocationValue, {color: '#FF6B6B'}]}>Extra cost applies</Text>
-                                  </View>
-                                  <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Uses extra days allocation:</Text>
-                                    <Text style={styles.allocationValue}>{bookingLength} days</Text>
-                                  </View>
-                                  <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Standard allocation impact:</Text>
-                                    <Text style={[styles.allocationValue, {color: '#27AE60'}]}>None</Text>
+                                    <Text style={[styles.allocationValue, {color: extraCost ? '#FF6B6B' : '#27AE60'}]}>
+                                      {extraCost ? 'Extra cost applies' : 'No extra cost'}
+                                    </Text>
                                   </View>
                                 </>
                               );
@@ -1529,14 +1550,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                                     <Text style={styles.allocationLabel}>Short term booking:</Text>
                                     <Text style={[styles.allocationValue, {color: '#4ECDC4'}]}>Flexible rules</Text>
                                   </View>
-                                  <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Standard allocation used:</Text>
-                                    <Text style={styles.allocationValue}>{bookingLength} days</Text>
-                                  </View>
-                                  <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Standard days remaining:</Text>
-                                    <Text style={styles.allocationValue}>{remainingAfterBooking} days</Text>
-                                  </View>
+                                
                                 </>
                               );
                             } else {
@@ -1546,14 +1560,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                                     <Text style={styles.allocationLabel}>Long term booking:</Text>
                                     <Text style={[styles.allocationValue, {color: '#45B7D1'}]}>Standard rules</Text>
                                   </View>
-                                  <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Standard allocation used:</Text>
-                                    <Text style={styles.allocationValue}>{bookingLength} days</Text>
-                                  </View>
-                                  <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Standard days remaining:</Text>
-                                    <Text style={styles.allocationValue}>{remainingAfterBooking} days</Text>
-                                  </View>
+                                
                                 </>
                               );
                             }
@@ -1561,14 +1568,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                         </View>
                       ) : null;
                       
-                      const warningsSection = (validationResults?.warnings && Array.isArray(validationResults.warnings) && validationResults.warnings.length > 0) ? (
-                        <View style={styles.warningsContainer}>
-                          <Text style={styles.warningTitle}>⚠️ Warnings</Text>
-                          {validationResults.warnings.map((warning, index) => (
-                            <Text key={`warning-${index}`} style={styles.warningText}>• {String(warning || 'Unknown warning')}</Text>
-                          ))}
-                        </View>
-                      ) : null;
+                      const warningsSection = null; // Hidden per request
                       
                       const errorsSection = (validationResults?.errors && Array.isArray(validationResults.errors) && validationResults.errors.length > 0) ? (
                         <View style={styles.errorsContainer}>
@@ -1584,7 +1584,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                           <View style={styles.validationContent}>
                             {bookingTypeSection}
                             {allocationSection}
-                            {warningsSection}
+                            {/* warningsSection intentionally omitted */}
                             {errorsSection}
                           </View>
                         </View>
@@ -1608,13 +1608,13 @@ const CreateBookingScreen = ({ route, navigation }) => {
                   return <View><Text>Validation Error</Text></View>;
                 }
               })()}
-              
-              {/* Book Button */}
+        
+        {/* Book Button */}
               {(() => {
                 try {
                   if (startDate && endDate) {
                     return (
-                      <View style={styles.bookButtonContainer}>
+          <View style={styles.bookButtonContainer}>
                         {(validationResults?.errors && validationResults.errors.length > 0) ? (
                           <View style={styles.buttonRow}>
                             <TouchableOpacity 
@@ -1641,20 +1641,33 @@ const CreateBookingScreen = ({ route, navigation }) => {
                             </TouchableOpacity>
                           </View>
                         ) : (
-                          <TouchableOpacity 
-                            style={styles.bookButton}
-                            onPress={handleContinueToBook}
-                            disabled={isLoading}
-                          >
-                            <Text style={styles.bookButtonText}>
-                              {isLoading ? 'Processing...' : 'Continue To Book'}
-                            </Text>
-                            <Text style={styles.bookButtonSubtext}>
-                              {getBookingSummary()}
-                            </Text>
-                          </TouchableOpacity>
+                          <View style={styles.buttonRow}>
+                            <TouchableOpacity 
+                              style={styles.clearButton}
+                              onPress={() => {
+                                setStartDate(null);
+                                setEndDate(null);
+                                setSelectedDates([]);
+                                setValidationResults(null);
+                              }}
+                            >
+                              <Text style={styles.clearButtonText}>Clear Selection</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                              style={[styles.bookButton, styles.flexButton]}
+                              onPress={handleContinueToBook}
+                              disabled={isLoading}
+                            >
+                              <Text style={styles.bookButtonText}>
+                                {isLoading ? 'Processing...' : 'Continue To Book'}
+                              </Text>
+                              <Text style={styles.bookButtonSubtext}>
+                                {getBookingSummary()}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
                         )}
-                      </View>
+      </View>
                     );
                   } else {
                     return null;
@@ -1769,7 +1782,7 @@ const styles = StyleSheet.create({
   },
   calendarContent: {
     flexGrow: 1,
-    paddingBottom: 0,
+    paddingBottom: 220,
   },
   monthContainer: {
     height: 340, // Increased from 300
@@ -1950,32 +1963,38 @@ const styles = StyleSheet.create({
     fontWeight: 'bold'
   },
   validationSummary: {
-    maxHeight: 250, // Limit height to prevent taking up too much screen space
-    padding: 15,
+    maxHeight: 280,
+    padding: 16,
     backgroundColor: '#fff',
     borderTopWidth: 1,
     borderTopColor: '#eee',
-    margin: 15,
-    borderRadius: 8,
+    marginHorizontal: 15,
+    marginVertical: 12,
+    borderRadius: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
     elevation: 2,
+    alignItems: 'center',
+    marginBottom: 120
   },
   validationContent: {
     flexGrow: 1,
     paddingBottom: 0,
+    width: '92%'
   },
   bookingTypeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 10,
   },
   bookingTypeTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1E4640',
+    textAlign: 'center'
   },
   bookingTypeBadge: {
     paddingHorizontal: 8,
@@ -1992,70 +2011,103 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     color: '#666',
     fontSize: 14,
+    textAlign: 'center'
   },
   allocationInfo: {
     marginBottom: 10,
-    padding: 10,
+    padding: 12,
     backgroundColor: '#f8f9fa',
-    borderRadius: 6,
+    borderRadius: 8,
+    alignItems: 'center'
   },
   allocationTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 8,
     color: '#1E4640',
+    textAlign: 'center'
   },
   allocationRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 5,
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginBottom: 6,
   },
   allocationLabel: {
     fontSize: 14,
     color: '#666',
+    textAlign: 'center'
   },
   allocationValue: {
     fontSize: 14,
     fontWeight: 'bold',
     color: '#1E4640',
+    textAlign: 'center'
   },
   warningsContainer: {
     marginBottom: 10,
     padding: 10,
     backgroundColor: '#FFF8DC',
-    borderRadius: 6,
+    borderRadius: 8,
     borderLeftWidth: 4,
     borderLeftColor: '#FF8C00',
+    alignItems: 'center'
   },
   warningTitle: {
     fontWeight: 'bold',
     color: '#FF8C00',
     fontSize: 14,
     marginBottom: 5,
+    textAlign: 'center'
   },
   warningText: {
     color: '#B8860B',
     fontSize: 13,
     marginBottom: 3,
+    textAlign: 'center'
   },
   errorsContainer: {
     marginBottom: 10,
     padding: 10,
     backgroundColor: '#FFF0F0',
-    borderRadius: 6,
+    borderRadius: 8,
     borderLeftWidth: 4,
     borderLeftColor: '#FF6B6B',
+    alignItems: 'center'
   },
   errorTitle: {
     fontWeight: 'bold',
     color: '#FF6B6B',
     fontSize: 14,
     marginBottom: 5,
+    textAlign: 'center'
   },
   errorText: {
     color: '#DC143C',
     fontSize: 13,
     marginBottom: 3,
+    textAlign: 'center'
+  },
+  serverBanner: {
+    position: 'absolute',
+    left: 15,
+    right: 15,
+    bottom: 135,
+    backgroundColor: '#FFF8DC',
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF8C00',
+    padding: 10,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+    alignItems: 'center'
+  },
+  serverBannerText: {
+    color: '#8a6d3b',
+    textAlign: 'center'
   },
   bookButtonDisabled: {
     backgroundColor: '#ccc',

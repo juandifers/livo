@@ -47,7 +47,8 @@
         {
           "calendarPermission": "The app needs to access your calendar to add booking events and set reminders for your stays."
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

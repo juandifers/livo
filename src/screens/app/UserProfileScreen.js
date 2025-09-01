@@ -23,25 +23,25 @@ const UserProfileScreen = ({ navigation }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [showImageOptions, setShowImageOptions] = useState(false);
   
-  // Mock user data - in a real app, this would come from the user context
+  // Initialize from authenticated user; fall back to placeholders if fields are missing
   const [userData, setUserData] = useState({
-    firstName: 'Juan Diego',
-    lastName: 'Fernandez',
-    userName: 'jundifers',
-    dateOfBirth: '2004-02-27',
-    email: 'juandiegofernandez27@gmail.com',
-    phoneNumber: '+57 3167493130',
-    addressLine1: 'Colombia, Bolívar, Cartagena de Indias',
-    addressLine2: 'edificio ibiza',
-    postalCode: '130001',
-    country: 'Colombia',
-    state: 'Bolívar',
-    city: 'Cartagena de Indias',
-    profileImage: null, // Will store URI when an image is selected
+    firstName: user?.name || user?.firstName || '',
+    lastName: user?.lastName || '',
+    userName: user?.username || user?.email?.split('@')[0] || '',
+    dateOfBirth: user?.dateOfBirth || '',
+    email: user?.email || '',
+    phoneNumber: user?.phoneNumber || '',
+    addressLine1: user?.address?.line1 || '',
+    addressLine2: user?.address?.line2 || '',
+    postalCode: user?.address?.postalCode || '',
+    country: user?.address?.country || '',
+    state: user?.address?.state || '',
+    city: user?.address?.city || '',
+    profileImage: user?.avatarUrl || null,
     communicationPreferences: {
-      phone: false,
-      text: false,
-      email: false
+      phone: !!user?.communicationPreferences?.phone,
+      text: !!user?.communicationPreferences?.text,
+      email: !!user?.communicationPreferences?.email
     }
   });
 
@@ -237,7 +237,7 @@ const UserProfileScreen = ({ navigation }) => {
           >
             <MaterialIcons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={styles.headerTitle}>{user?.name ? `${user.name}` : 'Profile'}</Text>
           {isEditing ? (
             <TouchableOpacity 
               style={styles.cancelButton}

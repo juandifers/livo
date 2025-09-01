@@ -130,12 +130,17 @@ const AssetDetailScreen = ({ route, navigation }) => {
     };
   };
 
-  // Get special dates usage
+  // Get special dates usage from real data
   const getSpecialDatesUsage = () => {
-    // In a real app, this would come from the backend
+    if (userAllocation?.specialDates) {
+      return {
+        type1: userAllocation.specialDates.type1,
+        type2: userAllocation.specialDates.type2
+      };
+    }
     return {
-      type1: { used: 0, total: 1 },
-      type2: { used: 0, total: 1 }
+      type1: { used: 0, total: 0 },
+      type2: { used: 0, total: 0 }
     };
   };
 
@@ -219,12 +224,136 @@ const AssetDetailScreen = ({ route, navigation }) => {
             </View>
           </View>
           
-          {/* Special Dates */}
-          <View style={styles.detailSection}>
-            <Text style={styles.sectionTitle}>Special Dates Used/ Total Available</Text>
-            <Text style={styles.trackerValue}>
-              Tipo 1: {specialDates.type1.used}/ {specialDates.type1.total} y Tipo 2: {specialDates.type2.used}/ {specialDates.type2.total}
-            </Text>
+          {/**
+           * Special Dates quick summary (commented out per request) - keep for potential re-enable
+           *
+           * <View style={styles.detailSection}>
+           *   <Text style={styles.sectionTitle}>Special Dates Used/ Total Available</Text>
+           *   <Text style={styles.trackerValue}>
+           *     Tipo 1: {specialDates.type1.used} / {specialDates.type1.total} y Tipo 2: {specialDates.type2.used} / {specialDates.type2.total}
+           *   </Text>
+           * </View>
+           */}
+          
+          {/* Booking Summary */}
+          <View style={styles.summaryContainer}>
+            <Text style={styles.summaryTitle}>Annual Booking Summary</Text>
+            
+            {userAllocation && (
+              <>
+                {/* Days Summary */}
+                <View style={styles.summaryRow}>
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryValue}>{userAllocation.daysRemaining}</Text>
+                    <Text style={styles.summaryLabel}>Days Remaining</Text>
+                  </View>
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryValue}>{userAllocation.daysBooked}</Text>
+                    <Text style={styles.summaryLabel}>Booked</Text>
+                  </View>
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryValue}>{userAllocation.allowedDaysPerYear}</Text>
+                    <Text style={styles.summaryLabel}>Total</Text>
+                  </View>
+                </View>
+
+                {/* Progress Bar */}
+                <View style={styles.progressContainer}>
+                  <View style={styles.progressBarBackground}>
+                    <View 
+                      style={[
+                        styles.progressBar, 
+                        { 
+                          width: `${(userAllocation.daysBooked / userAllocation.allowedDaysPerYear) * 100}%`,
+                          backgroundColor: userAllocation.daysBooked > userAllocation.allowedDaysPerYear * 0.8 ? '#ff6b6b' : '#1E4640'
+                        }
+                      ]} 
+                    />
+                  </View>
+                  <Text style={styles.progressText}>
+                    {Math.round((userAllocation.daysBooked / userAllocation.allowedDaysPerYear) * 100)}% of annual allocation used
+                  </Text>
+                </View>
+
+                {/* Special Dates Summary */}
+                {userAllocation.specialDates && (
+                  <View style={styles.specialDatesContainer}>
+                    <Text style={styles.specialDatesTitle}>Special Dates</Text>
+                   
+                    
+                    <View style={styles.specialDatesRow}>
+                      {/* Type 1 Special Dates */}
+                      <View style={styles.specialDateItem}>
+                        <View style={styles.specialDateHeader}>
+                          <Text style={styles.specialDateType}></Text>
+                          <View style={[styles.specialDateBadge, styles.type1Badge]}>
+                            <Text style={styles.specialDateBadgeText}>TYPE 1</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.specialDateUsage}>
+                          {userAllocation.specialDates.type1.used} / {userAllocation.specialDates.type1.total} used
+                        </Text>
+                        <View style={styles.specialDateProgressContainer}>
+                          <View style={styles.specialDateProgressBackground}>
+                            <View 
+                              style={[
+                                styles.specialDateProgress,
+                                styles.type1Progress,
+                                { 
+                                  width: userAllocation.specialDates.type1.total > 0 
+                                    ? `${(userAllocation.specialDates.type1.used / userAllocation.specialDates.type1.total) * 100}%`
+                                    : '0%'
+                                }
+                              ]} 
+                            />
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Type 2 Special Dates */}
+                      <View style={styles.specialDateItem}>
+                        <View style={styles.specialDateHeader}>
+                          <Text style={styles.specialDateType}></Text>
+                          <View style={[styles.specialDateBadge, styles.type2Badge]}>
+                            <Text style={styles.specialDateBadgeText}>TYPE 2</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.specialDateUsage}>
+                          {userAllocation.specialDates.type2.used} / {userAllocation.specialDates.type2.total} used
+                        </Text>
+                        <View style={styles.specialDateProgressContainer}>
+                          <View style={styles.specialDateProgressBackground}>
+                            <View 
+                              style={[
+                                styles.specialDateProgress,
+                                styles.type2Progress,
+                                { 
+                                  width: userAllocation.specialDates.type2.total > 0 
+                                    ? `${(userAllocation.specialDates.type2.used / userAllocation.specialDates.type2.total) * 100}%`
+                                    : '0%'
+                                }
+                              ]} 
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                    
+                    <Text style={styles.specialDatesNote}>
+                      Each 1/8 share (12.5%) grants access to one special date of each type per year
+                    </Text>
+                  </View>
+                )}
+
+                {/* Active Bookings */}
+                <View style={styles.activeBookingsContainer}>
+                  <Text style={styles.activeBookingsTitle}>Active Bookings</Text>
+                  <Text style={styles.activeBookingsCount}>
+                    {userAllocation.activeBookings} of {userAllocation.maxActiveBookings} slots used
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
           
           {/* Book Now Button */}
@@ -364,6 +493,158 @@ const styles = StyleSheet.create({
     marginLeft: 10
   },
   breadcrumbText: {
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  summaryContainer: {
+    padding: 20,
+    alignItems: 'center'
+  },
+  summaryTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center'
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  summaryItem: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    minWidth: 90
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  summaryLabel: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center'
+  },
+  progressContainer: {
+    marginBottom: 20,
+    width: '90%',
+    alignItems: 'center'
+  },
+  progressBarBackground: {
+    height: 14,
+    backgroundColor: '#eee',
+    borderRadius: 10,
+    overflow: 'hidden',
+    width: '100%'
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#1E4640',
+    borderRadius: 10
+  },
+  progressText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 8,
+    textAlign: 'center'
+  },
+  specialDatesContainer: {
+    padding: 20,
+    alignItems: 'center'
+  },
+  specialDatesTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center'
+  },
+  specialDatesSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center'
+  },
+  specialDatesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  specialDateItem: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    minWidth: 140
+  },
+  specialDateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 5
+  },
+  specialDateType: {
+    fontSize: 16,
+    fontWeight: 'bold'
+  },
+  specialDateBadge: {
+    backgroundColor: '#eee',
+    borderRadius: 10,
+    padding: 5
+  },
+  specialDateBadgeText: {
+    fontSize: 14,
+    fontWeight: 'bold'
+  },
+  specialDateUsage: {
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  specialDateProgressContainer: {
+    width: 100,
+    height: 20,
+    backgroundColor: '#eee',
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginTop: 5
+  },
+  specialDateProgressBackground: {
+    height: '100%',
+    backgroundColor: '#eee',
+    borderRadius: 10,
+    overflow: 'hidden'
+  },
+  specialDateProgress: {
+    height: '100%',
+    backgroundColor: '#6200ee',
+    borderRadius: 10
+  },
+  type1Badge: {
+    backgroundColor: '#ff6b6b'
+  },
+  type2Badge: {
+    backgroundColor: '#6200ee'
+  },
+  type1Progress: {
+    backgroundColor: '#ff6b6b'
+  },
+  type2Progress: {
+    backgroundColor: '#6200ee'
+  },
+  specialDatesNote: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 10,
+    textAlign: 'center'
+  },
+  activeBookingsContainer: {
+    padding: 20
+  },
+  activeBookingsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20
+  },
+  activeBookingsCount: {
     fontSize: 18,
     fontWeight: 'bold'
   }

@@ -157,9 +157,30 @@ const BookingDetailScreen = ({ route, navigation }) => {
 
   const durationDays = Math.ceil(
     (new Date(booking.endDate) - new Date(booking.startDate)) / (1000 * 60 * 60 * 24)
-  );
+  ) + 1;
 
   const durationNights = durationDays - 1;
+  const specialTypeLabel = booking?.specialDateType
+    ? (booking.specialDateType === 'type1' ? 'Type 1 Special Date' : booking.specialDateType === 'type2' ? 'Type 2 Special Date' : null)
+    : null;
+
+  // Helper function to determine booking status display
+  const getBookingStatus = (booking) => {
+    if (booking.status === 'cancelled') {
+      return { text: 'CANCELLED', color: '#dc3545' }; // Red color for cancelled
+    }
+    
+    const now = new Date();
+    const endDate = new Date(booking.endDate);
+    
+    if (endDate < now) {
+      return { text: 'PAST', color: '#6c757d' }; // Gray color for past
+    } else {
+      return { text: 'UPCOMING', color: '#1E4640' }; // Green color for upcoming
+    }
+  };
+
+  const bookingStatus = getBookingStatus(booking);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -186,8 +207,8 @@ const BookingDetailScreen = ({ route, navigation }) => {
             <Text style={styles.assetName}>
               {booking.asset.name}
             </Text>
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusText}>UPCOMING</Text>
+            <View style={[styles.statusBadge, { backgroundColor: bookingStatus.color }]}>
+              <Text style={styles.statusText}>{bookingStatus.text}</Text>
             </View>
           </View>
         </View>
@@ -195,18 +216,23 @@ const BookingDetailScreen = ({ route, navigation }) => {
         {/* Booking Details */}
         <View style={styles.detailsContainer}>
           <Text style={styles.sectionTitle}>Booking Details</Text>
-          
-          {/* Booked By */}
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Booked by</Text>
-            <Text style={styles.detailValue}>Juan Diego Fernandez</Text>
-          </View>
+        
           
           {/* Booking Type */}
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>Booking Type</Text>
             <Text style={styles.detailValue}>{booking.bookingType || 'Short'}</Text>
           </View>
+
+          {/* Special Date Type (if applicable) */}
+          {specialTypeLabel && (
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Special Date</Text>
+              <Text style={[styles.detailValue, { color: booking.specialDateType === 'type1' ? '#ff6b6b' : '#6200ee' }]}>
+                {specialTypeLabel}
+              </Text>
+            </View>
+          )}
           
           {/* Booking Date */}
           <View style={styles.detailRow}>
@@ -220,8 +246,11 @@ const BookingDetailScreen = ({ route, navigation }) => {
           <View style={styles.divider} />
           
           {/* Cancellation Policies */}
-          <TouchableOpacity style={styles.policiesButton}>
-            <Text style={styles.policiesText}>CANELLATION POLICIES</Text>
+          <TouchableOpacity 
+            style={styles.policiesButton}
+            onPress={() => navigation.navigate('CancellationPolicies')}
+          >
+            <Text style={styles.policiesText}>CANCELLATION POLICIES</Text>
             <MaterialIcons name="info" size={24} color="#000" />
           </TouchableOpacity>
           
@@ -240,7 +269,23 @@ const BookingDetailScreen = ({ route, navigation }) => {
               <Text style={styles.locationLabel}>Location Address</Text>
               <Text style={styles.locationValue}>{booking.asset.location || 'Cartagena'}</Text>
             </View>
-            <TouchableOpacity style={styles.mapButton}>
+            <TouchableOpacity 
+              style={styles.mapButton}
+              onPress={() => {
+                try {
+                  const address = booking?.asset?.location || '';
+                  if (!address) return;
+                  const url = Platform.select({
+                    ios: `http://maps.apple.com/?q=${encodeURIComponent(address)}`,
+                    android: `geo:0,0?q=${encodeURIComponent(address)}`
+                  });
+                  if (url) {
+                    const { Linking } = require('react-native');
+                    Linking.openURL(url);
+                  }
+                } catch (e) {}
+              }}
+            >
               <Text style={styles.mapButtonText}>SHOW ON MAP</Text>
               <MaterialIcons name="chevron-right" size={24} color="#000" />
             </TouchableOpacity>
@@ -397,7 +442,6 @@ const styles = StyleSheet.create({
     borderRadius: 5
   },
   statusBadge: {
-    backgroundColor: '#1E4640',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 5
