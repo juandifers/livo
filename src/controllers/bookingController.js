@@ -8,13 +8,12 @@ const DAYS_PER_EIGHTH_SHARE = 44; // Days allowed per 1/8 share (12.5%)
 const MAX_BOOKING_LENGTH = 14; // Maximum days for a continuous stay
 const STANDARD_BOOKING_LENGTH = 7; // Standard booking length
 const MAX_ADVANCE_BOOKING_YEARS = 2; // Maximum years in advance for booking
-const MAX_ACTIVE_BOOKINGS_PER_EIGHTH = 6; // Maximum active bookings per 1/8 share
-const MIN_ADVANCE_DAYS = 2; // Minimum days in advance for booking
-const SHORT_TERM_MIN_DAYS = 7; // Minimum days in advance for short-term bookings (updated from 8)
-const SHORT_TERM_MAX_DAYS_BOAT = 30; // Maximum days in advance for short-term boat bookings
-const SHORT_TERM_MAX_DAYS_HOME = 60; // Maximum days in advance for short-term home bookings
+const MAX_ACTIVE_BOOKINGS_PER_EIGHTH = 6; // Maximum active bookings per 1/8 share (>60 days only)
+const MIN_ADVANCE_DAYS = 0; // Real-time bookings allowed
+const SHORT_TERM_MIN_DAYS = 7; // <7 days = very short term
+const SHORT_TERM_MAX_DAYS = 60; // Short-term window up to 60 days for all assets
 const EXTRA_DAYS_PER_EIGHTH = 10; // Extra paid days allowed per 1/8 share
-const EXTRA_DAY_COST = 100; // Cost per extra day in default currency
+const EXTRA_DAY_COST = 100; // Cost per extra day in default currency, placeholder
 const MIN_STAY_BOAT = 1; // Minimum stay for boats in days
 const MIN_STAY_HOME = 2; // Minimum stay for homes in days
 
@@ -36,6 +35,12 @@ const calculateExtraAllowedDays = (sharePercentage) => {
   return Math.floor((sharePercentage / 12.5) * EXTRA_DAYS_PER_EIGHTH);
 };
 
+// Helper function to calculate max consecutive booking days based on share percentage
+const calculateMaxConsecutiveDays = (sharePercentage) => {
+  // 12.5% (1/8) = MAX_BOOKING_LENGTH days
+  return Math.floor((sharePercentage / 12.5) * MAX_BOOKING_LENGTH);
+};
+
 // Helper function to calculate booking duration including both start and end dates
 const calculateBookingDays = (startDate, endDate) => {
   // Add 1 to include both start and end dates
@@ -43,7 +48,7 @@ const calculateBookingDays = (startDate, endDate) => {
 };
 
 // Helper function to check booking time frame constraints
-const validateBookingTimeframe = async (startDate, endDate, assetId) => {
+const validateBookingTimeframe = async (startDate, endDate, assetId, sharePercentage) => {
   const now = new Date();
   const maxFutureDate = new Date();
   maxFutureDate.setFullYear(now.getFullYear() + MAX_ADVANCE_BOOKING_YEARS);
@@ -59,14 +64,8 @@ const validateBookingTimeframe = async (startDate, endDate, assetId) => {
     };
   }
   
-  // Check minimum advance days
+  // No minimum advance days (real-time booking allowed)
   const daysInAdvance = Math.ceil((bookingStartDate - now) / (1000 * 60 * 60 * 24));
-  if (daysInAdvance < MIN_ADVANCE_DAYS) {
-    return {
-      isValid: false,
-      error: `Bookings must be made at least ${MIN_ADVANCE_DAYS} days in advance`
-    };
-  }
   
   // Cannot book more than MAX_ADVANCE_BOOKING_YEARS years in advance
   if (bookingStartDate > maxFutureDate || bookingEndDate > maxFutureDate) {
@@ -76,13 +75,14 @@ const validateBookingTimeframe = async (startDate, endDate, assetId) => {
     };
   }
   
-  // Check if booking exceeds MAX_BOOKING_LENGTH days
+  // Check if booking exceeds max consecutive days based on ownership share
   const bookingDays = calculateBookingDays(bookingStartDate, bookingEndDate);
+  const maxConsecutiveDays = calculateMaxConsecutiveDays(sharePercentage);
   
-  if (bookingDays > MAX_BOOKING_LENGTH) {
+  if (bookingDays > maxConsecutiveDays) {
     return {
       isValid: false,
-      error: `A continuous stay cannot exceed ${MAX_BOOKING_LENGTH} days`
+      error: `A continuous stay cannot exceed ${maxConsecutiveDays} days for your ownership share`
     };
   }
   
@@ -120,7 +120,7 @@ const countActiveBookings = async (userId, assetId) => {
   return bookings.length;
 };
 
-// Helper function to calculate minimum and maximum gap between bookings
+// Helper function to calculate minimum gap between bookings
 const calculateBookingGap = async (userId, assetId, newStartDate, newEndDate) => {
   const now = new Date();
   
@@ -149,20 +149,18 @@ const calculateBookingGap = async (userId, assetId, newStartDate, newEndDate) =>
     lastBookingEndDate: null
   };
   
-  let maxGapResult = {
-    hasMaxGapConstraint: false,
-    maximumGap: 0,
-    daysToNextBooking: 0,
-    nextBookingStartDate: null
-  };
-  
-  // Calculate minimum gap based on previous booking
+  // Calculate minimum gap based on previous booking (exclusive in-between days)
   if (lastBooking) {
     const lastStayDuration = calculateBookingDays(lastBooking.startDate, lastBooking.endDate);
     
-    const daysBetweenBookings = Math.ceil(
-      (new Date(newStartDate) - lastBooking.endDate) / (1000 * 60 * 60 * 24)
-    );
+    const startMidnight = new Date(newStartDate);
+    startMidnight.setHours(0, 0, 0, 0);
+    const lastEndMidnight = new Date(lastBooking.endDate);
+    lastEndMidnight.setHours(0, 0, 0, 0);
+    // Exclusive in-between days: subtract 1 so that a booking ending on the 24th requires
+    // the 25th and 26th as rest days before starting on the 27th for a 2-day last stay
+    const rawDiffDays = Math.max(0, Math.floor((startMidnight - lastEndMidnight) / (1000 * 60 * 60 * 24)));
+    const daysBetweenBookings = Math.max(0, rawDiffDays - 1);
     
     minGapResult = {
       hasMinGapConstraint: true,
@@ -172,178 +170,112 @@ const calculateBookingGap = async (userId, assetId, newStartDate, newEndDate) =>
     };
   }
   
-  // Calculate maximum gap based on next booking
-  if (nextBooking) {
-    const daysToNextBooking = Math.ceil(
-      (nextBooking.startDate - new Date(newEndDate)) / (1000 * 60 * 60 * 24)
-    );
-    
-    maxGapResult = {
-      hasMaxGapConstraint: true,
-      maximumGap: newBookingDuration,
-      daysToNextBooking,
-      nextBookingStartDate: nextBooking.startDate
-    };
-  }
-  
-  return {
-    minGapResult,
-    maxGapResult
-  };
+  return { minGapResult };
 };
 
-// Helper function to check if booking is short-term based on asset type
+// Helper function to check if booking is short-term
 const isShortTermBooking = async (assetId, startDate) => {
-  const asset = await Asset.findById(assetId);
-  if (!asset) {
-    return false;
-  }
-  
   const now = new Date();
   const bookingStart = new Date(startDate);
   const daysInAdvance = Math.ceil((bookingStart - now) / (1000 * 60 * 60 * 24));
-  
-  // Three types of bookings:
-  // 1. Very short term: less than 7 days in advance (allows using extra days)
+
+  // Determine short-term threshold by asset type
+  let shortTermMaxDays = SHORT_TERM_MAX_DAYS; // default (homes)
+  try {
+    if (assetId) {
+      const asset = await Asset.findById(assetId).select('type');
+      if (asset && asset.type === 'boat') {
+        shortTermMaxDays = 30;
+      } else {
+        shortTermMaxDays = SHORT_TERM_MAX_DAYS; // homes: 60 days
+      }
+    }
+  } catch (_) {
+    // If asset lookup fails, fall back to default thresholds
+    shortTermMaxDays = SHORT_TERM_MAX_DAYS;
+  }
+
   if (daysInAdvance < SHORT_TERM_MIN_DAYS) {
-    return {
-      isShortTerm: true,
-      isVeryShortTerm: true,
-      canUseExtraDays: true
-    };
+    return { isShortTerm: true, isVeryShortTerm: true, canUseExtraDays: true };
   }
-  
-  // 2. Short term: between 7 and 30/60 days (depending on asset type)
-  const maxDays = asset.type === 'boat' ? SHORT_TERM_MAX_DAYS_BOAT : SHORT_TERM_MAX_DAYS_HOME;
-  if (daysInAdvance >= SHORT_TERM_MIN_DAYS && daysInAdvance <= maxDays) {
-    return {
-      isShortTerm: true,
-      isVeryShortTerm: false,
-      canUseExtraDays: false
-    };
+  if (daysInAdvance >= SHORT_TERM_MIN_DAYS && daysInAdvance <= shortTermMaxDays) {
+    return { isShortTerm: true, isVeryShortTerm: false, canUseExtraDays: false };
   }
-  
-  // 3. Regular booking: more than 30/60 days in advance
-  return {
-    isShortTerm: false,
-    isVeryShortTerm: false,
-    canUseExtraDays: false
-  };
+  return { isShortTerm: false, isVeryShortTerm: false, canUseExtraDays: false };
+};
+
+// Compute current allocation window based on ownership anniversary
+const computeAllocationWindow = (ownershipSinceDate) => {
+  const now = new Date();
+  const since = new Date(ownershipSinceDate);
+  const anniversaryThisYear = new Date(now.getFullYear(), since.getMonth(), since.getDate());
+  let windowStart = anniversaryThisYear;
+  if (now < anniversaryThisYear) {
+    windowStart = new Date(now.getFullYear() - 1, since.getMonth(), since.getDate());
+  }
+  const windowEnd = new Date(windowStart);
+  windowEnd.setFullYear(windowEnd.getFullYear() + 1);
+  windowEnd.setDate(windowEnd.getDate() - 1);
+  return { windowStart, windowEnd };
+};
+
+// Check for special date overlap types in a period
+const getOverlappingSpecialDateTypes = async (startDate, endDate) => {
+  const startYear = new Date(startDate).getFullYear();
+  const endYear = new Date(endDate).getFullYear();
+  const years = startYear === endYear ? [startYear] : [startYear, endYear];
+  const specialDates = await SpecialDate.find({ asset: null, year: { $in: years } });
+  const bookingStart = new Date(startDate);
+  const bookingEnd = new Date(endDate);
+  const types = new Set();
+  specialDates.forEach(sd => {
+    const s = new Date(sd.startDate);
+    const e = new Date(sd.endDate);
+    if (bookingStart <= e && bookingEnd >= s) {
+      types.add(sd.type);
+    }
+  });
+  return Array.from(types);
 };
 
 // Helper function to check if date falls within a special date range
-const checkSpecialDateBookings = async (userId, assetId, startDate, endDate, sharePercentage) => {
-  // Get current year and next year for special dates
-  const currentYear = new Date().getFullYear();
-  const years = [currentYear, currentYear + 1];
-  
-  // Convert sharePercentage to number of eighth shares
-  const eighthShares = sharePercentage / 12.5;
-  
-  // Find all universal special dates for these years
-  const specialDates = await SpecialDate.find({
-    asset: null,  // Universal special dates
-    year: { $in: years }
-  });
-  
-  if (!specialDates.length) {
+const checkSpecialDateBookings = async (userId, _assetId, startDate, endDate, _sharePercentage) => {
+  // Determine overlap with universal special dates
+  const overlappingTypes = await getOverlappingSpecialDateTypes(startDate, endDate);
+  if (overlappingTypes.length === 0) {
     return { isValid: true };
   }
-  
-  // Group special dates by type
-  const specialDatesByType = {};
-  specialDates.forEach(date => {
-    if (!specialDatesByType[date.type]) {
-      specialDatesByType[date.type] = [];
-    }
-    specialDatesByType[date.type].push(date);
-  });
-  
-  // Check if booking overlaps with any special dates
-  const bookingStart = new Date(startDate);
-  const bookingEnd = new Date(endDate);
-  const overlappingSpecialDates = {
-    type1: [],
-    type2: []
-  };
-  
-  for (const type in specialDatesByType) {
-    specialDatesByType[type].forEach(specialDate => {
-      const specialStart = new Date(specialDate.startDate);
-      const specialEnd = new Date(specialDate.endDate);
-      
-      // Check for overlap
-      if ((bookingStart <= specialEnd && bookingEnd >= specialStart)) {
-        if (specialDate.type === 'type1') {
-          overlappingSpecialDates.type1.push(specialDate);
-        } else if (specialDate.type === 'type2') {
-          overlappingSpecialDates.type2.push(specialDate);
-        }
-      }
-    });
-  }
-  
-  // If no overlap with special dates, booking is valid
-  if (!overlappingSpecialDates.type1.length && !overlappingSpecialDates.type2.length) {
+
+  // Enforce cap only when the new booking is more than 60 days away
+  const now = new Date();
+  const sixtyDaysFromNow = new Date(now.getTime() + SHORT_TERM_MAX_DAYS * 24 * 60 * 60 * 1000);
+  if (new Date(startDate) <= sixtyDaysFromNow) {
     return { isValid: true };
   }
-  
-  // Count existing special date bookings across ALL assets for this user
-  // since special dates are now universal
-  const existingSpecialDateBookings = {
-    type1: 0,
-    type2: 0
-  };
-  
-  // Get all user's bookings for the current and next year across all assets
-  const allUserBookings = await Booking.find({
+
+  // Count user's existing future special-date bookings >60 days away
+  const existingFutureBookings = await Booking.find({
     user: userId,
     status: { $ne: 'cancelled' },
-    startDate: { $gte: new Date(`${years[0]}-01-01`) },
-    endDate: { $lte: new Date(`${years[years.length-1]}-12-31`) }
+    startDate: { $gt: sixtyDaysFromNow }
   });
-  
-  // Count special date usage across all assets
-  allUserBookings.forEach(booking => {
-    const bookingStart = new Date(booking.startDate);
-    const bookingEnd = new Date(booking.endDate);
-    
-    // Track which special date types this booking overlaps with
-    const overlappedTypes = new Set();
-    
-    specialDates.forEach(specialDate => {
-      const specialStart = new Date(specialDate.startDate);
-      const specialEnd = new Date(specialDate.endDate);
-      
-      // Check if this booking overlaps with special date
-      if (bookingStart <= specialEnd && bookingEnd >= specialStart) {
-        overlappedTypes.add(specialDate.type);
-      }
-    });
-    
-    // Count each type only once per booking
-    if (overlappedTypes.has('type1')) {
-      existingSpecialDateBookings.type1++;
-    }
-    if (overlappedTypes.has('type2')) {
-      existingSpecialDateBookings.type2++;
-    }
-  });
-  
-  let error = null;
-  
-  if (overlappingSpecialDates.type1.length && existingSpecialDateBookings.type1 >= eighthShares) {
-    error = `You have already booked your allowed type 1 special dates (${eighthShares} allowed for your ${sharePercentage}% share)`;
-  } else if (overlappingSpecialDates.type2.length && existingSpecialDateBookings.type2 >= eighthShares) {
-    error = `You have already booked your allowed type 2 special dates (${eighthShares} allowed for your ${sharePercentage}% share)`;
+
+  const counts = { type1: 0, type2: 0 };
+  for (const b of existingFutureBookings) {
+    const types = await getOverlappingSpecialDateTypes(b.startDate, b.endDate);
+    const uniqueTypes = new Set(types);
+    if (uniqueTypes.has('type1')) counts.type1 += 1;
+    if (uniqueTypes.has('type2')) counts.type2 += 1;
   }
-  
-  return {
-    isValid: !error,
-    error,
-    overlappingSpecialDates,
-    existingSpecialDateBookings
-  };
+
+  if (overlappingTypes.includes('type1') && counts.type1 >= 1) {
+    return { isValid: false, error: 'You already have an active Type 1 special date booking more than 60 days away.' };
+  }
+  if (overlappingTypes.includes('type2') && counts.type2 >= 1) {
+    return { isValid: false, error: 'You already have an active Type 2 special date booking more than 60 days away.' };
+  }
+
+  return { isValid: true };
 };
 
 // @desc    Get all bookings
@@ -395,7 +327,7 @@ exports.getBookings = async (req, res) => {
     }
     
     const bookings = await Booking.find(query)
-      .populate('user', 'name email')
+      .populate('user', 'name lastName email')
       .populate('asset', 'name location type description capacity amenities');
     
     res.status(200).json({
@@ -417,7 +349,7 @@ exports.getBookings = async (req, res) => {
 exports.getBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id)
-      .populate('user', 'name email')
+      .populate('user', 'name lastName email')
       .populate('asset', 'name location type description capacity amenities');
     
     if (!booking) {
@@ -444,8 +376,8 @@ exports.getBooking = async (req, res) => {
 // @access  Private
 exports.createBooking = async (req, res) => {
   try {
-    // Get user ID from the authenticated user (JWT token)
-    const userId = req.user.id;
+    // Get user ID from the authenticated user or admin override
+    const userId = req.body.userId && req.user.role === 'admin' ? req.body.userId : req.user.id;
     const { assetId, startDate: startDateStr, endDate: endDateStr, notes, useExtraDays } = req.body;
     
     // Convert date strings to Date objects
@@ -485,7 +417,7 @@ exports.createBooking = async (req, res) => {
     const sharePercentage = userOwnership.sharePercentage;
     
     // Validate booking timeframe
-    const timeframeValidation = await validateBookingTimeframe(startDate, endDate, assetId);
+    const timeframeValidation = await validateBookingTimeframe(startDate, endDate, assetId, sharePercentage);
     if (!timeframeValidation.isValid) {
       return res.status(400).json({
         success: false,
@@ -498,8 +430,10 @@ exports.createBooking = async (req, res) => {
     const isShortTerm = shortTermResult.isShortTerm;
     const isVeryShortTerm = shortTermResult.isVeryShortTerm;
     
-    // Only apply gap rule if not a short-term booking
-    if (!isShortTerm) {
+    // Apply gap rule for non–short-term bookings
+    // Also apply gap rule for bookings that overlap special dates, regardless of short-term window
+    const overlappingTypesForGap = await getOverlappingSpecialDateTypes(startDate, endDate);
+    if (!isShortTerm || overlappingTypesForGap.length > 0) {
       const gapValidation = await calculateBookingGap(userId, assetId, startDate, endDate);
       if (gapValidation.minGapResult.hasMinGapConstraint && gapValidation.minGapResult.daysBetweenBookings < gapValidation.minGapResult.minimumGap) {
         return res.status(400).json({
@@ -507,13 +441,35 @@ exports.createBooking = async (req, res) => {
           error: `You must wait at least ${gapValidation.minGapResult.minimumGap} days between bookings (based on your last stay duration). Your next available booking date is ${new Date(gapValidation.minGapResult.lastBookingEndDate.getTime() + gapValidation.minGapResult.minimumGap * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}.`
         });
       }
-      
-      // Also check maximum gap constraint
-      if (gapValidation.maxGapResult.hasMaxGapConstraint && gapValidation.maxGapResult.daysToNextBooking > gapValidation.maxGapResult.maximumGap) {
-        return res.status(400).json({
-          success: false,
-          error: `The time between this booking and your next booking (${gapValidation.maxGapResult.daysToNextBooking} days) must be less than or equal to the duration of this stay (${gapValidation.maxGapResult.maximumGap} days).`
-        });
+
+      // Enforce special date cap: when booking > 60 days in advance, allow only one active Type1 and one active Type2 across all assets
+      const overlappingTypes = await getOverlappingSpecialDateTypes(startDate, endDate);
+      if (overlappingTypes.length > 0) {
+        const now = new Date();
+        const sixtyDaysFromNow = new Date(now.getTime() + SHORT_TERM_MAX_DAYS * 24 * 60 * 60 * 1000);
+        // Only enforce if the new booking starts beyond 60 days
+        if (startDate > sixtyDaysFromNow) {
+          const existingFutureBookings = await Booking.find({
+            user: userId,
+            status: { $ne: 'cancelled' },
+            startDate: { $gt: now }
+          });
+          // Count user's existing future special-date bookings beyond 60 days
+          const counts = { type1: 0, type2: 0 };
+          for (const b of existingFutureBookings) {
+            if (b.startDate <= sixtyDaysFromNow) continue; // restriction lifts within 60 days
+            const types = await getOverlappingSpecialDateTypes(b.startDate, b.endDate);
+            const uniqueTypes = new Set(types);
+            if (uniqueTypes.has('type1')) counts.type1 += 1;
+            if (uniqueTypes.has('type2')) counts.type2 += 1;
+          }
+          if (overlappingTypes.includes('type1') && counts.type1 >= 1) {
+            return res.status(400).json({ success: false, error: 'You already have an active Type 1 special date booking more than 60 days away. You may book another Type 1 once you are within 60 days of your existing special date.' });
+          }
+          if (overlappingTypes.includes('type2') && counts.type2 >= 1) {
+            return res.status(400).json({ success: false, error: 'You already have an active Type 2 special date booking more than 60 days away. You may book another Type 2 once you are within 60 days of your existing special date.' });
+          }
+        }
       }
     }
     
@@ -594,11 +550,8 @@ exports.createBooking = async (req, res) => {
         });
       }
       
-      // Check user's existing bookings for this year (for annual allocation)
-      const currentYear = new Date().getFullYear();
-      const yearStart = new Date(`${currentYear}-01-01`);
-      const yearEnd = new Date(`${currentYear}-12-31`);
-      
+      // Check user's existing bookings within allocation window based on ownership anniversary
+      const { windowStart, windowEnd } = computeAllocationWindow(userOwnership.since || new Date());
       const existingBookings = await Booking.find({
         user: userId,
         asset: assetId,
@@ -606,29 +559,22 @@ exports.createBooking = async (req, res) => {
           { status: { $ne: 'cancelled' } },
           { status: 'cancelled', shortTermCancelled: true }
         ],
-        startDate: { $gte: yearStart },
-        endDate: { $lte: yearEnd }
+        startDate: { $gte: windowStart },
+        endDate: { $lte: windowEnd }
       });
       
-      // Calculate days already booked this year
+      // Calculate days already booked in allocation window
       const daysBooked = existingBookings.reduce((total, b) => {
         const days = calculateBookingDays(b.startDate, b.endDate);
         return total + days;
       }, 0);
       
-      // Check if booking is split between two calendar years
-      let daysInCurrentYear = bookingDays;
-      const bookingYear = startDate.getFullYear();
-      const bookingNextYear = new Date(startDate);
-      bookingNextYear.setFullYear(bookingYear + 1);
-      bookingNextYear.setMonth(0);
-      bookingNextYear.setDate(1); // January 1st of next year
-      
-      if (endDate > bookingNextYear) {
-        // Calculate days in current year and next year
-        daysInCurrentYear = Math.ceil(
-          (bookingNextYear - startDate) / (1000 * 60 * 60 * 24)
-        );
+      // Compute number of days of this booking that fall within the allocation window
+      let daysInAllocationWindow = 0;
+      const overlapStart = new Date(Math.max(windowStart.getTime(), startDate.getTime()));
+      const overlapEnd = new Date(Math.min(windowEnd.getTime(), endDate.getTime()));
+      if (overlapEnd >= overlapStart) {
+        daysInAllocationWindow = calculateBookingDays(overlapStart, overlapEnd);
       }
       
       // Calculate standard and extra day allocation
@@ -643,12 +589,12 @@ exports.createBooking = async (req, res) => {
         }, 0);
       
       // Check if the new booking would exceed the user's standard allocation
-      if (daysBooked + daysInCurrentYear > allowedDaysPerYear) {
+      if (daysBooked + daysInAllocationWindow > allowedDaysPerYear) {
         // If exceeding standard allocation, check if user wants to use extra days
         if (useExtraDays) {
           // Calculate how many extra days would be needed
           const standardDaysRemaining = Math.max(0, allowedDaysPerYear - daysBooked);
-          const extraDaysNeeded = daysInCurrentYear - standardDaysRemaining;
+          const extraDaysNeeded = daysInAllocationWindow - standardDaysRemaining;
           
           // Check if user has enough extra days available
           if (extraDaysUsed + extraDaysNeeded > extraAllowedDays) {
@@ -771,12 +717,12 @@ exports.createBooking = async (req, res) => {
           // User does not want to use extra days
           return res.status(400).json({
             success: false,
-            error: `Booking exceeds your annual allocation. You have used ${daysBooked} days of your ${allowedDaysPerYear} day allocation for ${currentYear}.`,
+            error: `Booking exceeds your allocation. You have used ${daysBooked} days of your ${allowedDaysPerYear} day allocation in the current anniversary window.`,
             canUseExtraDays: true,
             extraDaysAvailable: extraAllowedDays - extraDaysUsed,
             standardDaysRemaining: allowedDaysPerYear - daysBooked,
-            extraDaysNeeded: Math.max(0, daysInCurrentYear - (allowedDaysPerYear - daysBooked)),
-            costEstimate: Math.max(0, daysInCurrentYear - (allowedDaysPerYear - daysBooked)) * EXTRA_DAY_COST
+            extraDaysNeeded: Math.max(0, daysInAllocationWindow - (allowedDaysPerYear - daysBooked)),
+            costEstimate: Math.max(0, daysInAllocationWindow - (allowedDaysPerYear - daysBooked)) * EXTRA_DAY_COST
           });
         }
       }
@@ -806,10 +752,7 @@ exports.createBooking = async (req, res) => {
     let bookingYear = startDate.getFullYear();
     
     // Check for special date overlap regardless of short-term status (just for record keeping)
-    const specialDates = await SpecialDate.find({
-      asset: null,  // Universal special dates
-      year: { $in: years }
-    });
+    const specialDates = await SpecialDate.find({ asset: null, year: { $in: years } });
     
     specialDates.forEach(specialDate => {
       const specialStart = new Date(specialDate.startDate);
@@ -837,7 +780,7 @@ exports.createBooking = async (req, res) => {
         isShortTerm,
         isVeryShortTerm,
         specialDateType,
-        year: bookingYear,
+        year: startDate.getFullYear(),
         isExtraDays,
         extraDayCount,
         extraDayCost
@@ -857,7 +800,7 @@ exports.createBooking = async (req, res) => {
         
         // Check if this segment overlaps with special dates
         let segmentSpecialDateType = specialDateType;
-        let segmentYear = bookingYear;
+        let segmentYear = currentStart.getFullYear();
         
         // Re-check special dates for each segment
         specialDates.forEach(specialDate => {
@@ -960,49 +903,54 @@ exports.updateBooking = async (req, res) => {
       
       // Only check allocation if booking will be longer
       if (newBookingDays > oldBookingDays) {
-        const additionalDays = newBookingDays - oldBookingDays;
-        
-        // Get user's ownership percentage
+        // Get user's ownership
         const asset = await Asset.findById(booking.asset);
         const userOwnership = asset.owners.find(owner => 
           owner.user.toString() === booking.user.toString()
         );
-        
         if (!userOwnership) {
-          return res.status(403).json({
+          return res.status(403).json({ success: false, error: 'User no longer owns shares in this asset' });
+        }
+
+        // Allowed and window by anniversary
+        const sharePercentage = userOwnership.sharePercentage;
+        // Enforce dynamic maximum consecutive stay based on ownership share
+        const maxConsecutiveDays = calculateMaxConsecutiveDays(sharePercentage);
+        if (newBookingDays > maxConsecutiveDays) {
+          return res.status(400).json({
             success: false,
-            error: 'User no longer owns shares in this asset'
+            error: `A continuous stay cannot exceed ${maxConsecutiveDays} days for your ownership share`
           });
         }
-        
-        const sharePercentage = userOwnership.sharePercentage;
-        const allowedDaysPerYear = Math.floor(365 * (sharePercentage / 100));
-        
-        // Check existing bookings for this year (excluding this one)
-        const currentYear = new Date().getFullYear();
-        const yearStart = new Date(`${currentYear}-01-01`);
-        const yearEnd = new Date(`${currentYear}-12-31`);
-        
+        const allowedDaysPerYear = calculateAllowedDays(sharePercentage);
+        const { windowStart, windowEnd } = computeAllocationWindow(userOwnership.since || new Date());
+
+        // Existing bookings in window excluding this one
         const existingBookings = await Booking.find({
           user: booking.user,
           asset: booking.asset,
           status: { $ne: 'cancelled' },
-          startDate: { $gte: yearStart },
-          endDate: { $lte: yearEnd },
-          _id: { $ne: booking._id } // Exclude this booking
+          startDate: { $gte: windowStart },
+          endDate: { $lte: windowEnd },
+          _id: { $ne: booking._id }
         });
-        
-        // Calculate days already booked this year
-        const daysBooked = existingBookings.reduce((total, b) => {
-          const days = calculateBookingDays(b.startDate, b.endDate);
-          return total + days;
-        }, 0);
-        
-        // Check if extension would exceed allocation
-        if (daysBooked + newBookingDays > allowedDaysPerYear) {
+        const daysBooked = existingBookings.reduce((total, b) => total + calculateBookingDays(b.startDate, b.endDate), 0);
+
+        // Compute overlap deltas within window for old vs new booking
+        const overlap = (s, e) => {
+          const os = new Date(Math.max(windowStart.getTime(), s.getTime()));
+          const oe = new Date(Math.min(windowEnd.getTime(), e.getTime()));
+          if (oe < os) return 0;
+          return calculateBookingDays(os, oe);
+        };
+        const oldOverlap = overlap(booking.startDate, booking.endDate);
+        const newOverlap = overlap(startDate, endDate);
+        const additionalOverlap = Math.max(0, newOverlap - oldOverlap);
+
+        if (daysBooked + additionalOverlap > allowedDaysPerYear) {
           return res.status(400).json({
             success: false,
-            error: `Booking update exceeds your annual allocation. You have used ${daysBooked} days of your ${allowedDaysPerYear} day allocation.`
+            error: `Booking update exceeds your annual allocation. You have used ${daysBooked} days of your ${allowedDaysPerYear} day allocation in the current anniversary window.`
           });
         }
       }
@@ -1243,6 +1191,9 @@ exports.getUserAllocation = async (req, res) => {
     const allowedDaysPerYear = calculateAllowedDays(sharePercentage);
     const extraAllowedDays = calculateExtraAllowedDays(sharePercentage);
     const maxActiveBookings = calculateMaxActiveBookings(sharePercentage);
+
+    // Compute allocation window using ownership anniversary
+    const { windowStart, windowEnd } = computeAllocationWindow(userOwnership.since || new Date());
     
     // Calculate special date allocations based on ownership
     // Each 1/8 share (12.5%) gives access to 1 special date of each type
@@ -1258,31 +1209,25 @@ exports.getUserAllocation = async (req, res) => {
       }
     };
     
-    // Get bookings for current year
-    const currentYear = new Date().getFullYear();
-    const yearStart = new Date(`${currentYear}-01-01`);
-    const yearEnd = new Date(`${currentYear}-12-31`);
-    
-    // Get regular bookings (excluding cancelled ones except for short-term cancelled bookings)
+    // Get regular bookings in the allocation window (excluding cancelled ones, except short-term cancelled which still count)
     const regularBookings = await Booking.find({
       user: userId,
       asset: assetId,
       $or: [
         { status: { $ne: 'cancelled' } },
-        { status: 'cancelled', shortTermCancelled: true } // Include short-term cancelled bookings that still count
+        { status: 'cancelled', shortTermCancelled: true }
       ],
-      startDate: { $gte: yearStart },
-      endDate: { $lte: yearEnd }
+      startDate: { $gte: windowStart },
+      endDate: { $lte: windowEnd }
     });
     
-    // Get special dates for current year (now universal, not asset-specific)
-    const nextYear = currentYear + 1;
+    // Get universal special dates for the window span (could cross years)
+    const startY = windowStart.getFullYear();
+    const endY = windowEnd.getFullYear();
+    const years = startY === endY ? [startY] : [startY, endY];
     const specialDates = await SpecialDate.find({
-      $or: [
-        { year: currentYear },
-        { year: nextYear }
-      ],
-      asset: null  // Universal special dates
+      year: { $in: years },
+      asset: null
     });
     
     // Calculate special date usage
@@ -1369,7 +1314,7 @@ exports.getUserAllocation = async (req, res) => {
         activeBookings: activeBookingsCount,
         maxActiveBookings,
         activeBookingsRemaining: maxActiveBookings - activeBookingsCount,
-        maxStayLength: MAX_BOOKING_LENGTH,
+        maxStayLength: calculateMaxConsecutiveDays(sharePercentage),
         standardBookingLength: STANDARD_BOOKING_LENGTH,
         maxAdvanceBookingYears: MAX_ADVANCE_BOOKING_YEARS,
         shortTermCancelledBookings: shortTermCancelledBookingsCount,
@@ -1391,7 +1336,11 @@ exports.getUserAllocation = async (req, res) => {
           isShortTerm: b.isShortTerm,
           shortTermCancelled: b.shortTermCancelled,
           days: calculateBookingDays(b.startDate, b.endDate)
-        }))
+        })),
+        allocationWindow: {
+          start: windowStart,
+          end: windowEnd
+        }
       }
     });
   } catch (err) {
@@ -1461,12 +1410,17 @@ exports.createSpecialDates = async (req, res) => {
         });
       }
       
-      // Ensure dates are not overlapping within the same type
-      const existingDates = await SpecialDate.find({
-        asset: assetId,
+      // Ensure dates are not overlapping within the same type (universal or per asset)
+      const query = {
         type: date.type,
         year: date.year
-      });
+      };
+      if (assetId) {
+        query.asset = assetId;
+      } else {
+        query.asset = null;
+      }
+      const existingDates = await SpecialDate.find(query);
       
       const newStartDate = new Date(date.startDate);
       const newEndDate = new Date(date.endDate);
@@ -1484,10 +1438,10 @@ exports.createSpecialDates = async (req, res) => {
       }
     }
     
-    // Create special dates
+    // Create special dates (assetId optional; null means universal)
     const specialDates = await SpecialDate.insertMany(
       dates.map(date => ({
-        asset: assetId,
+        asset: assetId || null,
         type: date.type,
         startDate: date.startDate,
         endDate: date.endDate,
@@ -1681,7 +1635,7 @@ exports.getAssetBookings = async (req, res) => {
     
     // Get all bookings for this asset
     const bookings = await Booking.find({ asset: assetId })
-      .populate('user', 'name email')
+      .populate('user', 'name lastName email')
       .populate('asset', 'name location type description capacity amenities')
       .sort({ startDate: 1 }); // Sort by start date ascending
     

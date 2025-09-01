@@ -32,10 +32,10 @@ if (config.env === 'development') {
   app.use(morgan('dev'));
 }
 
-// Enable CORS
+// Enable CORS - reflect request origin to support credentials
 app.use(cors({
-  origin: '*', // In production, set to specific domains
-  credentials: true // Allow cookies to be sent with requests
+  origin: true,
+  credentials: true
 }));
 
 // Apply rate limiting to all routes - DISABLED FOR TESTING

@@ -4,7 +4,8 @@ const SpecialDateSchema = new mongoose.Schema({
   asset: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Asset',
-    required: [true, 'Asset ID is required']
+    // Allow universal special dates by leaving asset null
+    default: null
   },
   type: {
     type: String,
@@ -42,7 +43,7 @@ SpecialDateSchema.pre('validate', function(next) {
   next();
 });
 
-// Index to optimize queries
-SpecialDateSchema.index({ asset: 1, year: 1, type: 1 });
+// Index to optimize queries (sparse allows null asset)
+SpecialDateSchema.index({ asset: 1, year: 1, type: 1 }, { sparse: true });
 
 module.exports = mongoose.model('SpecialDate', SpecialDateSchema); 

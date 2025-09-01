@@ -5,13 +5,15 @@ const {
   updateUser, 
   deleteUser,
   getCurrentUser,
-  getUserOwnedAssets
+  getUserOwnedAssets,
+  createUser
 } = require('../controllers/userController');
 
 const {
   validateUpdateUser,
   validateGetUser,
-  validateDeleteUser
+  validateDeleteUser,
+  validateCreateUser
 } = require('../middleware/validation/userValidation');
 
 const { protect, authorize } = require('../middleware/auth');
@@ -28,7 +30,8 @@ router.get('/me/assets', getUserOwnedAssets);
 // Routes limited to admin only
 router
   .route('/')
-  .get(authorize('admin'), getUsers);
+  .get(authorize('admin'), getUsers)
+  .post(authorize('admin'), validateCreateUser, createUser);
 
 router
   .route('/:id')

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const Asset = require('./Asset');
 
 const BookingSchema = new mongoose.Schema({
   user: {
@@ -131,6 +132,33 @@ BookingSchema.pre('save', async function(next) {
     }
   }
   next();
+});
+
+// TODO: check if this complies with day tracker and not night tracker
+// Enforce minimum and maximum stay based on asset type
+BookingSchema.pre('validate', async function(next) {
+  try {
+    if (!this.startDate || !this.endDate || !this.asset) return next();
+
+    const asset = await Asset.findById(this.asset).select('type');
+    if (!asset) return next(new Error('Asset not found for booking'));
+
+    const totalDays = Math.ceil((this.endDate - this.startDate) / (1000 * 60 * 60 * 24)) + 1; //TODO: remove +1 if this is not correct
+
+    const minStay = asset.type === 'boat' ? 1 : 2;
+    if (totalDays < minStay) {
+      return next(new Error(`Minimum stay for ${asset.type} is ${minStay} day${minStay > 1 ? 's' : ''}`));
+    }
+
+    const maxStay = 14;
+    if (totalDays > maxStay) {
+      return next(new Error(`A continuous stay cannot exceed ${maxStay} days`));
+    }
+
+    return next();
+  } catch (err) {
+    return next(err);
+  }
 });
 
 // Index to optimize queries

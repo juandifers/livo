@@ -21,7 +21,7 @@ exports.getAssets = async (req, res) => {
                 if (!owner.user) return owner;
                 
                 try {
-                  const user = await User.findById(owner.user).select('name email').lean();
+                  const user = await User.findById(owner.user).select('name lastName email').lean();
                   if (user) {
                     return {
                       ...owner,
@@ -128,7 +128,7 @@ exports.getAssets = async (req, res) => {
 // @access  Public
 exports.getAsset = async (req, res) => {
   try {
-    const asset = await Asset.findById(req.params.id).populate('owners.user', 'name email');
+    const asset = await Asset.findById(req.params.id).populate('owners.user', 'name lastName email');
     
     if (!asset) {
       return res.status(404).json({
@@ -142,7 +142,7 @@ exports.getAsset = async (req, res) => {
     
     // If asset was modified, fetch it again with the updated data
     const finalAsset = modified 
-      ? await Asset.findById(req.params.id).populate('owners.user', 'name email')
+      ? await Asset.findById(req.params.id).populate('owners.user', 'name lastName email')
       : asset;
 
     res.status(200).json({

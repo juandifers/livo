@@ -14,6 +14,11 @@ const validateRequest = (req, res, next) => {
 
 // Validation rules for creating a booking
 exports.validateCreateBooking = [
+  // Optional override for admin to create on behalf of a user
+  body('userId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid user ID format for admin override'),
   body('assetId')
     .notEmpty()
     .withMessage('Asset ID is required')
@@ -180,11 +185,10 @@ exports.validateGetUserAllocation = [
   validateRequest
 ];
 
-// Validation rules for creating special dates
+// Validation rules for creating special dates (assetId optional for universal dates)
 exports.validateCreateSpecialDates = [
   body('assetId')
-    .notEmpty()
-    .withMessage('Asset ID is required')
+    .optional({ nullable: true })
     .isMongoId()
     .withMessage('Invalid asset ID format'),
   

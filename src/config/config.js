@@ -1,14 +1,12 @@
 require('dotenv').config();
 
 module.exports = {
-  // Server settings
   port: process.env.PORT || 3000,
   env: process.env.NODE_ENV || 'development',
-  
-  // MongoDB settings
-  mongoURI: process.env.MONGO_URI || 'mongodb://localhost:27017/assetBookingSystem',
-  
-  // JWT settings
+
+  // Prefer MONGODB_URI; fallback to MONGO_URI; final fallback to local
+  mongoURI: process.env.MONGODB_URI || process.env.MONGO_URI || 'mongodb://localhost:27017/assetBookingSystem',
+
   jwt: {
     secret: process.env.JWT_SECRET || 'yourSecretKey',
     expiresIn: process.env.JWT_EXPIRE || '30d',
