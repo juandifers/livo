@@ -163,6 +163,40 @@ exports.getAsset = async (req, res) => {
 // @access  Private
 exports.createAsset = async (req, res) => {
   try {
+    // Create asset data from request body
+    const assetData = {
+      name: req.body.name,
+      type: req.body.type,
+      description: req.body.description,
+      location: req.body.location,
+      capacity: req.body.capacity,
+      photos: req.body.photos || [],
+      amenities: req.body.amenities || [],
+      owners: [] // Start with no owners - ownership will be added as shares are sold
+    };
+    
+    const asset = await Asset.create(assetData);
+    
+    // Populate owner details before returning (even though empty initially)
+    const populatedAsset = await Asset.findById(asset._id).populate('owners.user', 'name lastName email');
+    
+    res.status(201).json({
+      success: true,
+      data: populatedAsset
+    });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err.message
+    });
+  }
+};
+
+// @desc    Create new asset (legacy - with admin ownership)
+// @route   POST /api/assets/with-admin-owner
+// @access  Private
+exports.createAssetWithAdminOwner = async (req, res) => {
+  try {
     // Find the admin user (user with ID 1)
     const adminUser = await User.findOne({ role: 'admin' }).sort({ _id: 1 }).limit(1);
     
@@ -453,6 +487,137 @@ exports.removeOwner = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Server Error'
+    });
+  }
+};
+
+// @desc    Update asset owners (bulk update)
+// @route   PUT /api/assets/:id/owners
+// @access  Private (Admin only)
+exports.updateOwners = async (req, res) => {
+  try {
+    const { owners } = req.body;
+    
+    if (!owners || !Array.isArray(owners)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Owners array is required'
+      });
+    }
+    
+    // Validate share percentages
+    const validPercentages = [12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100];
+    
+    for (const owner of owners) {
+      if (!owner.userId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Each owner must have a userId'
+        });
+      }
+      
+      if (!validPercentages.includes(Number(owner.sharePercentage))) {
+        return res.status(400).json({
+          success: false,
+          error: `Share percentage must be one of: ${validPercentages.join(', ')}`
+        });
+      }
+      
+      // Check if user exists
+      const user = await User.findById(owner.userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: `User not found: ${owner.userId}`
+        });
+      }
+    }
+    
+    // Validate total percentage equals 100
+    const totalPercentage = owners.reduce((sum, owner) => sum + Number(owner.sharePercentage), 0);
+    if (totalPercentage !== 100) {
+      return res.status(400).json({
+        success: false,
+        error: `Total ownership must equal 100% (currently ${totalPercentage}%)`
+      });
+    }
+    
+    const asset = await Asset.findById(req.params.id);
+    
+    if (!asset) {
+      return res.status(404).json({
+        success: false,
+        error: 'Asset not found'
+      });
+    }
+    
+    // Keep track of old owners for cleanup
+    const oldOwners = asset.owners.map(o => ({
+      userId: o.user.toString(),
+      sharePercentage: o.sharePercentage
+    }));
+    
+    // Update asset owners
+    asset.owners = owners.map(owner => ({
+      user: owner.userId,
+      sharePercentage: Number(owner.sharePercentage),
+      since: owner.since || new Date()
+    }));
+    
+    await asset.save();
+    
+    // Update users' ownedAssets arrays
+    // 1. Remove asset from users who are no longer owners
+    const newOwnerIds = owners.map(o => o.userId);
+    const removedOwners = oldOwners.filter(o => !newOwnerIds.includes(o.userId));
+    
+    for (const removed of removedOwners) {
+      const user = await User.findById(removed.userId);
+      if (user) {
+        const assetIndex = user.ownedAssets.findIndex(
+          item => item.asset.toString() === req.params.id
+        );
+        if (assetIndex !== -1) {
+          user.ownedAssets.splice(assetIndex, 1);
+          await user.save();
+        }
+      }
+    }
+    
+    // 2. Add or update asset for current owners
+    for (const owner of owners) {
+      const user = await User.findById(owner.userId);
+      if (user) {
+        const assetIndex = user.ownedAssets.findIndex(
+          item => item.asset.toString() === req.params.id
+        );
+        
+        if (assetIndex !== -1) {
+          // Update existing ownership
+          user.ownedAssets[assetIndex].sharePercentage = Number(owner.sharePercentage);
+        } else {
+          // Add new ownership
+          user.ownedAssets.push({
+            asset: asset._id,
+            sharePercentage: Number(owner.sharePercentage),
+            purchaseDate: new Date()
+          });
+        }
+        await user.save();
+      }
+    }
+    
+    // Fetch updated asset with populated owners
+    const updatedAsset = await Asset.findById(req.params.id).populate('owners.user', 'name lastName email');
+    
+    res.status(200).json({
+      success: true,
+      data: updatedAsset
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: 'Server Error: ' + err.message
     });
   }
 }; 

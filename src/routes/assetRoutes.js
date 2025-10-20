@@ -6,7 +6,8 @@ const {
   updateAsset, 
   deleteAsset,
   addOwner,
-  removeOwner
+  removeOwner,
+  updateOwners
 } = require('../controllers/assetController');
 
 const {
@@ -15,7 +16,8 @@ const {
   validateGetAsset,
   validateDeleteAsset,
   validateAddOwner,
-  validateRemoveOwner
+  validateRemoveOwner,
+  validateUpdateOwners
 } = require('../middleware/validation/assetValidation');
 
 const { protect, authorize } = require('../middleware/auth');
@@ -36,6 +38,7 @@ router.delete('/:id', authorize('admin'), validateDeleteAsset, deleteAsset);
 
 // Owner management (admin only)
 router.post('/:id/owners', authorize('admin'), validateAddOwner, addOwner);
+router.put('/:id/owners', authorize('admin'), validateUpdateOwners, updateOwners);
 router.delete('/:id/owners/:userId', authorize('admin'), validateRemoveOwner, removeOwner);
 
 module.exports = router; 

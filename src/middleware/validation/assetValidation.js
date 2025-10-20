@@ -155,4 +155,29 @@ exports.validateRemoveOwner = [
     .withMessage('Invalid user ID format'),
   
   validateRequest
+];
+
+// Validation rules for updating owners (bulk update)
+exports.validateUpdateOwners = [
+  param('id')
+    .isMongoId()
+    .withMessage('Invalid asset ID format'),
+  
+  body('owners')
+    .isArray({ min: 1 })
+    .withMessage('Owners must be a non-empty array'),
+  
+  body('owners.*.userId')
+    .notEmpty()
+    .withMessage('Each owner must have a userId')
+    .isMongoId()
+    .withMessage('Invalid user ID format'),
+  
+  body('owners.*.sharePercentage')
+    .notEmpty()
+    .withMessage('Each owner must have a sharePercentage')
+    .isFloat({ min: 0, max: 100 })
+    .withMessage('Share percentage must be between 0 and 100'),
+  
+  validateRequest
 ]; 
