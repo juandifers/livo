@@ -58,7 +58,7 @@ export default async function AssetBookingsPage({ params }: { params: Promise<{ 
 
       {/* Owners pie chart */}
       <div className="rounded-xl border bg-white shadow-sm p-4 mt-6">
-        <AssetOwnersPieClient owners={pieOwners} />
+        <AssetOwnersPieClient owners={pieOwners} assetId={assetId} />
       </div>
 
       {/* Allocation by Owner */}
@@ -83,7 +83,12 @@ export default async function AssetBookingsPage({ params }: { params: Promise<{ 
               <div key={o.userId} className="rounded-lg border p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-3">
-                    <div className="font-medium">{o.label}</div>
+                    <Link 
+                      href={`/admin/users/${o.userId}/bookings`}
+                      className="font-medium hover:text-slate-900 hover:underline"
+                    >
+                      {o.label}
+                    </Link>
                     <div className="text-xs text-slate-600">Share: {o.sharePercentage}%</div>
                   </div>
                   {(wStart && wEnd) && (
