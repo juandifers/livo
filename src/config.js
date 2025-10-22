@@ -15,7 +15,7 @@ export const DEV_MODE = false;
 export const API_CONFIG = {
   // For local development with physical device
   development: {
-    baseURL: 'http://192.168.0.12:3000/api',
+    baseURL: 'http://192.168.0.11:3000/api',
     timeout: 10000
   },
   
