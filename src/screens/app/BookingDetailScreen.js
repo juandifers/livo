@@ -45,9 +45,21 @@ const BookingDetailScreen = ({ route, navigation }) => {
   }, [bookingId]);
 
   const handleCancelBooking = () => {
+    // Check if this is a short-term booking (within 60 days)
+    const now = new Date();
+    const bookingStart = new Date(booking.startDate);
+    const daysUntilBooking = Math.ceil((bookingStart - now) / (1000 * 60 * 60 * 24));
+    
+    const isShortTermBooking = daysUntilBooking <= 60;
+    
+    const title = 'Cancel Booking';
+    const message = isShortTermBooking 
+      ? `⚠️ Short-term Cancellation Warning\n\nThis booking is within 60 days of the start date. If you cancel now, these days will still count against your allocation unless someone else books these dates.\n\nAre you sure you want to cancel?`
+      : 'Are you sure you want to cancel this booking?';
+    
     Alert.alert(
-      'Cancel Booking',
-      'Are you sure you want to cancel this booking?',
+      title,
+      message,
       [
         {
           text: 'No',
@@ -67,7 +79,12 @@ const BookingDetailScreen = ({ route, navigation }) => {
                   ...booking,
                   status: 'cancelled'
                 });
-                Alert.alert('Success', 'Booking has been cancelled', [
+                
+                const successMessage = isShortTermBooking
+                  ? 'Short-term booking cancelled. Note that this will still count against your allocation unless another owner books these dates.'
+                  : 'Booking has been cancelled';
+                
+                Alert.alert('Success', successMessage, [
                   {
                     text: 'OK',
                     onPress: () => {

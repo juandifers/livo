@@ -1,4 +1,5 @@
 import { differenceInDays, isBefore, isAfter, addDays, isSameDay } from 'date-fns';
+import DateUtils from './dateUtils';
 
 /**
  * Comprehensive booking validation utility
@@ -47,58 +48,60 @@ export const determineBookingType = (startDate, assetType) => {
 export const validateBookingDates = (startDate, endDate, assetType, bookingType, allocationFromApi = null) => {
   const errors = [];
   
+  // Parse dates using DateUtils for consistent handling
+  const parsedStartDate = DateUtils.parseDate(startDate);
+  const parsedEndDate = DateUtils.parseDate(endDate);
+  
   // Basic date validation
-  if (!startDate || !endDate) {
+  if (!parsedStartDate || !parsedEndDate) {
     errors.push('Start date and end date are required');
     return { isValid: false, errors };
   }
   
-  if (isBefore(endDate, startDate) || isSameDay(startDate, endDate)) {
+  if (isBefore(parsedEndDate, parsedStartDate) || isSameDay(parsedStartDate, parsedEndDate)) {
     errors.push('End date must be after start date');
     return { isValid: false, errors };
   }
   
   const today = new Date();
-  if (isBefore(startDate, today)) {
+  if (isBefore(parsedStartDate, today)) {
     errors.push('Cannot book dates in the past');
     return { isValid: false, errors };
   }
   
   // Check maximum advance booking (2 years)
-  const daysInAdvance = differenceInDays(startDate, today);
+  const daysInAdvance = differenceInDays(parsedStartDate, today);
   if (daysInAdvance > BOOKING_CONSTANTS.MAX_ADVANCE_BOOKING_DAYS) {
-    errors.push(`Cannot book more than ${BOOKING_CONSTANTS.MAX_ADVANCE_BOOKING_DAYS} days in advance`);
+    errors.push(`Too far ahead: max ${BOOKING_CONSTANTS.MAX_ADVANCE_BOOKING_DAYS} days`);
   }
   
-  // Validate booking length - use same calculation as backend
-  const bookingLength = Math.ceil(
-    (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-  ) + 1;  // Add 1 to include both start and end dates
+  // Validate booking length using DateUtils
+  const bookingLength = DateUtils.calculateBookingDays(parsedStartDate, parsedEndDate);
   
   console.log('📊 Booking length calculation:', {
-    startDate: startDate.toDateString(),
-    endDate: endDate.toDateString(),
-    startTime: startDate.getTime(),
-    endTime: endDate.getTime(),
-    timeDiff: endDate.getTime() - startDate.getTime(),
+    startDate: parsedStartDate.toDateString(),
+    endDate: parsedEndDate.toDateString(),
+    startTime: parsedStartDate.getTime(),
+    endTime: parsedEndDate.getTime(),
+    timeDiff: parsedEndDate.getTime() - parsedStartDate.getTime(),
     bookingLength
   });
   
   // Maximum continuous stay rule - use dynamic value from backend if available
   const maxStayLength = allocationFromApi?.maxStayLength || BOOKING_CONSTANTS.MAX_CONTINUOUS_STAY;
   if (bookingLength > maxStayLength) {
-    errors.push(`Maximum continuous stay is ${maxStayLength} days for your ownership share`);
+    errors.push(`Max stay: ${maxStayLength} days`);
   }
   
   // Minimum stay by asset type
   const minStay = assetType === 'boat' ? 1 : 2;
   if (bookingLength < minStay) {
-    errors.push(`Minimum stay for ${assetType === 'boat' ? 'boats' : 'properties'} is ${minStay} day${minStay > 1 ? 's' : ''}`);
+    errors.push(`Min stay: ${minStay} day${minStay > 1 ? 's' : ''}`);
   }
   
   // Very short-term bookings must be short
   if (bookingType === BOOKING_TYPES.VERY_SHORT_TERM && bookingLength > BOOKING_CONSTANTS.VERY_SHORT_TERM_THRESHOLD) {
-    errors.push(`Very short-term bookings cannot exceed ${BOOKING_CONSTANTS.VERY_SHORT_TERM_THRESHOLD} days`);
+    errors.push(`Max ${BOOKING_CONSTANTS.VERY_SHORT_TERM_THRESHOLD} days for short-term`);
   }
   
   return {
@@ -120,6 +123,8 @@ export const validateGapRules = (startDate, endDate, existingBookings, bookingTy
     return { isValid: true, errors: [] };
   }
   
+  const gapConflicts = [];
+  
   // Check gaps with existing bookings
   existingBookings.forEach(booking => {
     const bookingStart = new Date(booking.startDate);
@@ -140,8 +145,13 @@ export const validateGapRules = (startDate, endDate, existingBookings, bookingTy
     existingStartMidnight.setHours(0,0,0,0);
     const rawBefore = Math.floor((existingStartMidnight.getTime() - endMidnight.getTime()) / (1000 * 60 * 60 * 24));
     const daysBefore = Math.max(0, rawBefore - 1);
-    if (daysBefore > 0 && daysBefore < existingBookingLength) {
-      errors.push(`Gap of ${existingBookingLength} days required before existing ${existingBookingLength}-day booking on ${bookingStart.toDateString()}. Current gap: ${daysBefore} days.`);
+    if (daysBefore < existingBookingLength) {
+      gapConflicts.push({
+        type: 'before',
+        requiredGap: existingBookingLength,
+        bookingDate: bookingStart.toLocaleDateString(),
+        currentGap: daysBefore
+      });
     }
     
     // Check gap after existing booking (exclusive in-between days)
@@ -151,10 +161,44 @@ export const validateGapRules = (startDate, endDate, existingBookings, bookingTy
     existingEndMidnight.setHours(0,0,0,0);
     const rawAfter = Math.floor((startMidnight.getTime() - existingEndMidnight.getTime()) / (1000 * 60 * 60 * 24));
     const daysAfter = Math.max(0, rawAfter - 1);
-    if (daysAfter > 0 && daysAfter < existingBookingLength) {
-      errors.push(`Gap of ${existingBookingLength} days required after existing ${existingBookingLength}-day booking ending ${bookingEnd.toDateString()}. Current gap: ${daysAfter} days.`);
+    if (daysAfter < existingBookingLength) {
+      gapConflicts.push({
+        type: 'after',
+        requiredGap: existingBookingLength,
+        bookingDate: bookingEnd.toLocaleDateString(),
+        currentGap: daysAfter
+      });
     }
   });
+  
+  // Create concise error messages
+  if (gapConflicts.length > 0) {
+    // Group conflicts by gap requirement
+    const gapGroups = {};
+    gapConflicts.forEach(conflict => {
+      const key = `${conflict.requiredGap}-day`;
+      if (!gapGroups[key]) {
+        gapGroups[key] = [];
+      }
+      gapGroups[key].push(conflict);
+    });
+    
+    // Create concise summary messages
+    Object.entries(gapGroups).forEach(([gapType, conflicts]) => {
+      if (conflicts.length === 1) {
+        const conflict = conflicts[0];
+        errors.push(`${conflict.requiredGap}-day gap needed ${conflict.type === 'before' ? 'before' : 'after'} ${conflict.bookingDate}`);
+      } else {
+        errors.push(`${conflicts[0].requiredGap}-day gap needed (${conflicts.length} conflicts)`);
+      }
+    });
+    
+    // Limit to 2 error messages to prevent overflow
+    if (errors.length > 2) {
+      errors.splice(2);
+      errors.push(`+${gapConflicts.length - 2} more conflicts`);
+    }
+  }
   
   return {
     isValid: errors.length === 0,
@@ -177,7 +221,7 @@ export const validateOwnershipAllocation = (userId, userOwnership, bookingLength
   // Calculate allocation: 44 days per 1/8 share (12.5%)
   const allocatedDays = Math.floor((userOwnership.sharePercentage / 12.5) * 44);
   
-  // Prefer backend-provided anniversary-window allocation if available
+  // Prefer backend-provided yearly allocation if available
   let usedDays = null;
   let remainingDays = null;
   if (allocationFromApi && typeof allocationFromApi.daysBooked === 'number' && typeof allocationFromApi.daysRemaining === 'number') {
@@ -198,7 +242,7 @@ export const validateOwnershipAllocation = (userId, userOwnership, bookingLength
   // For regular bookings, check allocation
   if (bookingType === BOOKING_TYPES.REGULAR) {
     if (bookingLength > remainingDays) {
-      errors.push(`Insufficient allocation. You have ${remainingDays} days remaining of your ${allocatedDays} annual allocation.`);
+      errors.push(`Insufficient days: ${remainingDays}/${allocatedDays}`);
     }
   }
   
@@ -224,7 +268,7 @@ export const validateOwnershipAllocation = (userId, userOwnership, bookingLength
     
     if (overlaps) {
       if (specialDate.type === 'maintenance') {
-        errors.push(`Asset is under maintenance during selected dates (${specialStart.toDateString()} - ${specialEnd.toDateString()})`);
+        errors.push(`Maintenance: ${specialStart.toLocaleDateString()}`);
       } else if (specialDate.type === 'peak') {
         warnings.push(`Peak season dates selected. Special rules and rates may apply.`);
       } else if (specialDate.type === 'holiday') {
@@ -303,6 +347,13 @@ export const validateBooking = async (bookingData, userData, assetData, existing
   const allWarnings = [
     ...allocationValidation.warnings
   ];
+  
+  // Limit total errors to prevent screen overflow
+  const maxErrors = 3;
+  if (allErrors.length > maxErrors) {
+    allErrors.splice(maxErrors);
+    allErrors.push(`+${dateValidation.errors.length + gapValidation.errors.length + allocationValidation.errors.length - maxErrors} more issues`);
+  }
   
   // FE-side special date cap notice: one active per type (>60 days away)
   if (specialDatesCalendar && startDate && endDate) {

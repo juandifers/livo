@@ -9,7 +9,9 @@ import {
   Image,
   SafeAreaView,
   StatusBar,
-  Dimensions
+  Dimensions,
+  FlatList,
+  Modal
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { assetApi, bookingApi, authApi } from '../../api';
@@ -26,6 +28,8 @@ const AssetDetailScreen = ({ route, navigation }) => {
   const [isLoadingBookings, setIsLoadingBookings] = useState(true);
   const [isLoadingAllocation, setIsLoadingAllocation] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [showYearPicker, setShowYearPicker] = useState(false);
 
   const loadCurrentUser = async () => {
     try {
@@ -96,13 +100,49 @@ const AssetDetailScreen = ({ route, navigation }) => {
     loadData();
   }, [assetId]);
 
-  // Get asset image based on type
+  // Get asset image - prioritize uploaded photos, fallback to default
   const getAssetImage = () => {
+    // If asset has uploaded photos, use the first one
+    if (asset?.photos && asset.photos.length > 0) {
+      const photoUrl = asset.photos[0];
+      // Handle both relative and absolute URLs
+      if (photoUrl.startsWith('http')) {
+        return photoUrl;
+      } else {
+        // Construct full URL for relative paths
+        const { getCurrentApiConfig } = require('../../config');
+        const apiConfig = getCurrentApiConfig();
+        const baseUrl = apiConfig.baseURL.replace('/api', '');
+        return `${baseUrl}${photoUrl}`;
+      }
+    }
+    
+    // Fallback to default images based on type
     if (asset?.type === 'boat') {
       return 'https://images.unsplash.com/photo-1564834744159-ff0ea41ba4b9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80';
     } else {
       return 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80';
     }
+  };
+
+  // Get all asset images for gallery
+  const getAssetImages = () => {
+    if (asset?.photos && asset.photos.length > 0) {
+      const { getCurrentApiConfig } = require('../../config');
+      const apiConfig = getCurrentApiConfig();
+      const baseUrl = apiConfig.baseURL.replace('/api', '');
+      
+      return asset.photos.map(photoUrl => {
+        if (photoUrl.startsWith('http')) {
+          return photoUrl;
+        } else {
+          return `${baseUrl}${photoUrl}`;
+        }
+      });
+    }
+    
+    // Fallback to single default image
+    return [getAssetImage()];
   };
 
   // Get ownership display from real data
@@ -161,10 +201,23 @@ const AssetDetailScreen = ({ route, navigation }) => {
       <ScrollView style={styles.container} bounces={false}>
         {/* Image Header */}
         <View style={styles.imageContainer}>
-          <Image
-            source={{ uri: getAssetImage() }}
-            style={styles.assetImage}
-            resizeMode="cover"
+          <FlatList
+            data={getAssetImages()}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item, index) => index.toString()}
+            onMomentumScrollEnd={(event) => {
+              const newIndex = Math.round(event.nativeEvent.contentOffset.x / width);
+              setCurrentImageIndex(newIndex);
+            }}
+            renderItem={({ item }) => (
+              <Image
+                source={{ uri: item }}
+                style={styles.assetImage}
+                resizeMode="cover"
+              />
+            )}
           />
           
           {/* Back Button */}
@@ -175,10 +228,20 @@ const AssetDetailScreen = ({ route, navigation }) => {
             <MaterialIcons name="arrow-back" size={24} color="black" />
           </TouchableOpacity>
           
-          {/* Image Indicator */}
-          <View style={styles.indicatorContainer}>
-            <View style={styles.indicator} />
-          </View>
+          {/* Image Indicators */}
+          {getAssetImages().length > 1 && (
+            <View style={styles.indicatorContainer}>
+              {getAssetImages().map((_, index) => (
+                <View 
+                  key={index}
+                  style={[
+                    styles.indicator, 
+                    index === currentImageIndex && styles.activeIndicator
+                  ]} 
+                />
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Asset Details */}
@@ -237,18 +300,45 @@ const AssetDetailScreen = ({ route, navigation }) => {
           
           {/* Booking Summary */}
           <View style={styles.summaryContainer}>
+            {/* Year Selector */}
+            <TouchableOpacity 
+              style={styles.yearSelector}
+              onPress={() => setShowYearPicker(true)}
+            >
+              <Text style={styles.yearSelectorText}>{selectedYear}</Text>
+              <MaterialIcons name="arrow-drop-down" size={20} color="#666" />
+            </TouchableOpacity>
+            
             <Text style={styles.summaryTitle}>Annual Booking Summary</Text>
             
             {userAllocation && (
               <>
-                {/* Days Summary */}
+                {/* Selected Year Summary */}
                 <View style={styles.summaryRow}>
                   <View style={styles.summaryItem}>
-                    <Text style={styles.summaryValue}>{userAllocation.daysRemaining}</Text>
+                    <Text style={styles.summaryValue}>
+                      {(() => {
+                        if (selectedYear === userAllocation.currentYear?.year) {
+                          return userAllocation.currentYear?.daysRemaining || userAllocation.daysRemaining;
+                        } else if (selectedYear === userAllocation.nextYear?.year) {
+                          return userAllocation.nextYear?.daysRemaining || 0;
+                        }
+                        return userAllocation.allowedDaysPerYear; // Default for other years
+                      })()}
+                    </Text>
                     <Text style={styles.summaryLabel}>Days Remaining</Text>
                   </View>
                   <View style={styles.summaryItem}>
-                    <Text style={styles.summaryValue}>{userAllocation.daysBooked}</Text>
+                    <Text style={styles.summaryValue}>
+                      {(() => {
+                        if (selectedYear === userAllocation.currentYear?.year) {
+                          return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
+                        } else if (selectedYear === userAllocation.nextYear?.year) {
+                          return userAllocation.nextYear?.daysBooked || 0;
+                        }
+                        return 0; // Default for other years
+                      })()}
+                    </Text>
                     <Text style={styles.summaryLabel}>Booked</Text>
                   </View>
                   <View style={styles.summaryItem}>
@@ -264,14 +354,44 @@ const AssetDetailScreen = ({ route, navigation }) => {
                       style={[
                         styles.progressBar, 
                         { 
-                          width: `${(userAllocation.daysBooked / userAllocation.allowedDaysPerYear) * 100}%`,
-                          backgroundColor: userAllocation.daysBooked > userAllocation.allowedDaysPerYear * 0.8 ? '#ff6b6b' : '#1E4640'
+                          width: `${(() => {
+                            const daysBooked = (() => {
+                              if (selectedYear === userAllocation.currentYear?.year) {
+                                return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
+                              } else if (selectedYear === userAllocation.nextYear?.year) {
+                                return userAllocation.nextYear?.daysBooked || 0;
+                              }
+                              return 0;
+                            })();
+                            return (daysBooked / userAllocation.allowedDaysPerYear) * 100;
+                          })()}%`,
+                          backgroundColor: (() => {
+                            const daysBooked = (() => {
+                              if (selectedYear === userAllocation.currentYear?.year) {
+                                return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
+                              } else if (selectedYear === userAllocation.nextYear?.year) {
+                                return userAllocation.nextYear?.daysBooked || 0;
+                              }
+                              return 0;
+                            })();
+                            return daysBooked > userAllocation.allowedDaysPerYear * 0.8 ? '#ff6b6b' : '#1E4640';
+                          })()
                         }
                       ]} 
                     />
                   </View>
                   <Text style={styles.progressText}>
-                    {Math.round((userAllocation.daysBooked / userAllocation.allowedDaysPerYear) * 100)}% of annual allocation used
+                    {(() => {
+                      const daysBooked = (() => {
+                        if (selectedYear === userAllocation.currentYear?.year) {
+                          return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
+                        } else if (selectedYear === userAllocation.nextYear?.year) {
+                          return userAllocation.nextYear?.daysBooked || 0;
+                        }
+                        return 0;
+                      })();
+                      return Math.round((daysBooked / userAllocation.allowedDaysPerYear) * 100);
+                    })()}% of {selectedYear} allocation used
                   </Text>
                 </View>
 
@@ -339,9 +459,6 @@ const AssetDetailScreen = ({ route, navigation }) => {
                       </View>
                     </View>
                     
-                    <Text style={styles.specialDatesNote}>
-                      Each 1/8 share (12.5%) grants access to one special date of each type per year
-                    </Text>
                   </View>
                 )}
 
@@ -349,9 +466,17 @@ const AssetDetailScreen = ({ route, navigation }) => {
                 <View style={styles.activeBookingsContainer}>
                   <Text style={styles.activeBookingsTitle}>Active Bookings</Text>
                   <Text style={styles.activeBookingsCount}>
-                    {userAllocation.activeBookings} of {userAllocation.maxActiveBookings} slots used
+                    {(() => {
+                      if (selectedYear === userAllocation.currentYear?.year) {
+                        return `${userAllocation.currentYearActiveBookings || 0} of ${userAllocation.maxActiveBookings} slots used`;
+                      } else if (selectedYear === userAllocation.nextYear?.year) {
+                        return `${userAllocation.nextYearActiveBookings || 0} of ${userAllocation.maxActiveBookings} slots used`;
+                      }
+                      return `${userAllocation.activeBookings || 0} of ${userAllocation.maxActiveBookings} slots used`;
+                    })()}
                   </Text>
                 </View>
+
               </>
             )}
           </View>
@@ -366,6 +491,62 @@ const AssetDetailScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Year Picker Modal */}
+      <Modal
+        visible={showYearPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowYearPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Year</Text>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setShowYearPicker(false)}
+              >
+                <MaterialIcons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.yearList}>
+              {(() => {
+                const currentYear = new Date().getFullYear();
+                const years = [];
+                // Show current year, next year, and previous year
+                for (let year = currentYear - 1; year <= currentYear + 1; year++) {
+                  years.push(year);
+                }
+                return years.map(year => (
+                  <TouchableOpacity
+                    key={year}
+                    style={[
+                      styles.yearOption,
+                      selectedYear === year && styles.selectedYearOption
+                    ]}
+                    onPress={() => {
+                      setSelectedYear(year);
+                      setShowYearPicker(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.yearOptionText,
+                      selectedYear === year && styles.selectedYearOptionText
+                    ]}>
+                      {year}
+                    </Text>
+                    {selectedYear === year && (
+                      <MaterialIcons name="check" size={20} color="#007AFF" />
+                    )}
+                  </TouchableOpacity>
+                ));
+              })()}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -391,7 +572,7 @@ const styles = StyleSheet.create({
     position: 'relative'
   },
   assetImage: {
-    width: '100%',
+    width: width,
     height: '100%'
   },
   backButton: {
@@ -422,8 +603,11 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
     margin: 4
+  },
+  activeIndicator: {
+    backgroundColor: '#fff'
   },
   detailsContainer: {
     padding: 20
@@ -505,6 +689,39 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 20,
     textAlign: 'center'
+  },
+  yearSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    alignSelf: 'center',
+    marginBottom: 15
+  },
+  yearSelectorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#495057',
+    marginRight: 4
+  },
+  yearSection: {
+    marginBottom: 20,
+    padding: 15,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e9ecef'
+  },
+  yearTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+    color: '#495057'
   },
   summaryRow: {
     flexDirection: 'row',
@@ -647,6 +864,57 @@ const styles = StyleSheet.create({
   activeBookingsCount: {
     fontSize: 18,
     fontWeight: 'bold'
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    maxHeight: '60%'
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333'
+  },
+  closeButton: {
+    padding: 4
+  },
+  yearList: {
+    maxHeight: 200
+  },
+  yearOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0'
+  },
+  selectedYearOption: {
+    backgroundColor: '#f0f8ff'
+  },
+  yearOptionText: {
+    fontSize: 16,
+    color: '#333'
+  },
+  selectedYearOptionText: {
+    color: '#007AFF',
+    fontWeight: '600'
   }
 });
 

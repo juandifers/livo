@@ -1,5 +1,6 @@
 import apiClient, { DEV_MODE } from './apiClient';
 import { testBookings } from '../utils/testData';
+import DateUtils from '../utils/dateUtils';
 
 // Booking API endpoints
 const getUserBookings = async () => {
@@ -15,11 +16,13 @@ const getUserBookings = async () => {
       const userId = userResponse.data.data._id;
       
       const response = await apiClient.get(`/bookings?user=${userId}`);
-      return { success: true, data: response.data.data }; // Extract bookings from response.data.data
+      const bookings = response.data.data.map(booking => DateUtils.parseBookingDates(booking));
+      return { success: true, data: bookings };
     } catch (userError) {
       // If we can't get user ID, try the old endpoint as fallback
       const response = await apiClient.get('/bookings');
-      return { success: true, data: response.data.data };
+      const bookings = response.data.data.map(booking => DateUtils.parseBookingDates(booking));
+      return { success: true, data: bookings };
     }
   } catch (error) {
     console.error('Error fetching user bookings:', error);
@@ -34,20 +37,47 @@ const getUserAllocation = async (userId, assetId) => {
   try {
     // In development mode, simulate allocation data
     if (DEV_MODE) {
+      const currentYear = new Date().getFullYear();
+      const nextYear = currentYear + 1;
+      
       return { 
         success: true, 
         data: {
           sharePercentage: 50, // Sarah has 50% ownership of Serenity Dreams
           allowedDaysPerYear: 176, // 50% ownership = 176 days (4 * 44)
+          extraAllowedDays: 40, // 50% ownership = 40 extra days (4 * 10)
+          maxActiveBookings: 24, // 50% ownership = 24 bookings (4 * 6)
+          maxStayLength: 56, // 50% ownership = 56 days (4 * 14)
+          
+          // Current year allocation
+          currentYear: {
+            year: currentYear,
+            daysBooked: 7,
+            daysRemaining: 169,
+            extraDaysUsed: 0,
+            extraDaysRemaining: 40,
+            specialDateUsage: { type1: 0, type2: 0 },
+            bookings: []
+          },
+          
+          // Next year allocation
+          nextYear: {
+            year: nextYear,
+            daysBooked: 0,
+            daysRemaining: 176,
+            extraDaysUsed: 0,
+            extraDaysRemaining: 40,
+            specialDateUsage: { type1: 0, type2: 0 },
+            bookings: []
+          },
+          
+          // Legacy fields for backward compatibility
           daysBooked: 7,
           daysRemaining: 169,
-          extraAllowedDays: 40, // 50% ownership = 40 extra days (4 * 10)
           extraDaysUsed: 0,
           extraDaysRemaining: 40,
           activeBookings: 1,
-          maxActiveBookings: 24, // 50% ownership = 24 bookings (4 * 6)
           activeBookingsRemaining: 23,
-          maxStayLength: 56, // 50% ownership = 56 days (4 * 14)
           currentBookings: [],
           futureBookings: []
         }
@@ -109,19 +139,22 @@ const getBookingById = async (bookingId) => {
 
 const createBooking = async (bookingData) => {
   try {
+    // Prepare booking data using DateUtils
+    const preparedData = DateUtils.prepareBookingForApi(bookingData);
+    
     // In development mode, simulate booking creation
     if (DEV_MODE) {
       const newBooking = {
         _id: 'test-booking-' + Date.now(),
-        ...bookingData,
+        ...preparedData,
         status: 'pending',
-        createdAt: new Date().toISOString()
+        createdAt: DateUtils.toApiFormat(new Date())
       };
       return { success: true, data: newBooking };
     }
     
     // In production mode
-    const response = await apiClient.post('/bookings', bookingData);
+    const response = await apiClient.post('/bookings', preparedData);
     return { success: true, data: response.data.data };
   } catch (error) {
     return { 

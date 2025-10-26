@@ -20,6 +20,7 @@ import { format, addDays, addMonths, isSameDay, isWithinInterval, isBefore, getM
 import { showCalendarSelection } from '../../utils/calendarUtils';
 import { useAuth } from '../../context/AuthContext';
 import { validateBooking, determineBookingType, getBookingTypeInfo, BOOKING_TYPES, checkSpecialDateOverlap } from '../../utils/bookingValidation';
+import DateUtils from '../../utils/dateUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -1071,11 +1072,12 @@ const CreateBookingScreen = ({ route, navigation }) => {
         throw new Error('Invalid booking data');
       }
       
-      // Ensure dates are in the correct format
+      // Ensure dates are in the correct format using DateUtils
       const formattedBookingData = {
-        ...bookingData,
-        startDate: bookingData.startDate.toISOString().split('T')[0], // YYYY-MM-DD format
-        endDate: bookingData.endDate.toISOString().split('T')[0], // YYYY-MM-DD format
+        assetId: bookingData.assetId,
+        startDate: DateUtils.toApiFormat(bookingData.startDate), // YYYY-MM-DD format
+        endDate: DateUtils.toApiFormat(bookingData.endDate), // YYYY-MM-DD format
+        bookingType: bookingData.bookingType
       };
       
       console.log('Submitting booking with data:', formattedBookingData);
@@ -1208,19 +1210,9 @@ const CreateBookingScreen = ({ route, navigation }) => {
               status: booking.status
             });
             
-            // Parse dates with proper timezone handling - handle both YYYY-MM-DD and ISO formats
-            let startDate, endDate;
-            
-            // Check if the date is already in YYYY-MM-DD format or ISO format
-            if (booking.startDate.includes('T')) {
-              // ISO format - convert to local date
-              startDate = new Date(booking.startDate.split('T')[0] + 'T00:00:00');
-              endDate = new Date(booking.endDate.split('T')[0] + 'T00:00:00');
-            } else {
-              // YYYY-MM-DD format - create local date
-              startDate = new Date(booking.startDate + 'T00:00:00');
-              endDate = new Date(booking.endDate + 'T00:00:00');
-            }
+            // Parse dates using DateUtils for consistent handling
+            const startDate = DateUtils.parseDate(booking.startDate);
+            const endDate = DateUtils.parseDate(booking.endDate);
             
             const currentDate = new Date(startDate);
             
