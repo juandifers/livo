@@ -51,6 +51,9 @@ app.use('/api/admin', adminRoutes);
 // Static folder
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve uploaded files
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Connect to database
 mongoose.connect(config.mongoURI, {
   useNewUrlParser: true,

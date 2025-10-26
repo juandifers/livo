@@ -25,9 +25,9 @@ const SpecialDateSchema = new mongoose.Schema({
     type: Date, 
     required: [true, 'End date is required']
   },
-  year: {
-    type: Number,
-    required: [true, 'Year is required']
+  repeatYearly: {
+    type: Boolean,
+    default: false
   },
   createdAt: {
     type: Date,
@@ -44,6 +44,6 @@ SpecialDateSchema.pre('validate', function(next) {
 });
 
 // Index to optimize queries (sparse allows null asset)
-SpecialDateSchema.index({ asset: 1, year: 1, type: 1 }, { sparse: true });
+SpecialDateSchema.index({ asset: 1, type: 1 }, { sparse: true });
 
 module.exports = mongoose.model('SpecialDate', SpecialDateSchema); 

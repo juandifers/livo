@@ -9,6 +9,7 @@ const {
   getAvailability,
   getUserAllocation,
   getSpecialDates,
+  getAllSpecialDates,
   createSpecialDates,
   deleteSpecialDate,
   processExtraDaysPayment
@@ -42,6 +43,7 @@ router.get('/availability/:assetId', validateGetAvailability, getAvailability);
 router.get('/allocation/:userId/:assetId', validateGetUserAllocation, getUserAllocation);
 
 // Special dates routes - admin only for creation/deletion
+router.get('/special-dates/all', authorize('admin'), getAllSpecialDates);
 router.get('/special-dates/:assetId', validateGetSpecialDates, getSpecialDates);
 router.post('/special-dates', authorize('admin'), validateCreateSpecialDates, createSpecialDates);
 router.delete('/special-dates/:id', authorize('admin'), validateDeleteSpecialDate, deleteSpecialDate);

@@ -67,6 +67,19 @@ const BookingSchema = new mongoose.Schema({
     type: Date,
     default: null
   },
+  // Fields for partial rebooking tracking
+  originalDays: {
+    type: Number,
+    default: null // Total days of the original booking
+  },
+  rebookedDays: {
+    type: Number,
+    default: 0 // Days that have been rebooked by others
+  },
+  remainingPenaltyDays: {
+    type: Number,
+    default: null // Days still counting as penalty (originalDays - rebookedDays)
+  },
   // Fields for extra paid days tracking
   isExtraDays: {
     type: Boolean,

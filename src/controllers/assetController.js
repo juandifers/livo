@@ -1,6 +1,9 @@
 const Asset = require('../models/Asset');
 const User = require('../models/User');
 const { handleNullOwners } = require('../utils/assetUtils');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
 // @desc    Get all assets
 // @route   GET /api/assets
@@ -84,11 +87,11 @@ exports.getAssets = async (req, res) => {
         // Calculate total ownership percentage
         const totalPercentage = validOwners.reduce((sum, owner) => sum + Number(owner.sharePercentage), 0);
         
-        if (totalPercentage !== 100) {
+        if (totalPercentage > 100) {
           console.warn(`Asset ${asset._id} has invalid total ownership: ${totalPercentage}%`);
           assetErrors.push({
             assetId: asset._id,
-            error: `Invalid total ownership percentage: ${totalPercentage}%`
+            error: `Invalid total ownership percentage: ${totalPercentage}% (cannot exceed 100%)`
           });
         }
         
@@ -533,12 +536,12 @@ exports.updateOwners = async (req, res) => {
       }
     }
     
-    // Validate total percentage equals 100
+    // Validate total percentage does not exceed 100
     const totalPercentage = owners.reduce((sum, owner) => sum + Number(owner.sharePercentage), 0);
-    if (totalPercentage !== 100) {
+    if (totalPercentage > 100) {
       return res.status(400).json({
         success: false,
-        error: `Total ownership must equal 100% (currently ${totalPercentage}%)`
+        error: `Total ownership cannot exceed 100% (currently ${totalPercentage}%)`
       });
     }
     
@@ -613,6 +616,111 @@ exports.updateOwners = async (req, res) => {
     res.status(200).json({
       success: true,
       data: updatedAsset
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: 'Server Error: ' + err.message
+    });
+  }
+};
+
+// Configure multer for photo uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, '../../uploads/assets');
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  }
+});
+
+// @desc    Upload photos for an asset
+// @route   POST /api/assets/:id/photos
+// @access  Private (Admin only)
+exports.uploadPhotos = async (req, res) => {
+  try {
+    const assetId = req.params.id;
+    
+    // Check if asset exists
+    const asset = await Asset.findById(assetId);
+    if (!asset) {
+      return res.status(404).json({
+        success: false,
+        error: 'Asset not found'
+      });
+    }
+
+    // Handle multer upload
+    upload.array('photos', 10)(req, res, async (err) => {
+      if (err) {
+        return res.status(400).json({
+          success: false,
+          error: err.message
+        });
+      }
+
+      if (!req.files || req.files.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No photos uploaded'
+        });
+      }
+
+      try {
+        // Generate URLs for the uploaded photos
+        const photoUrls = req.files.map(file => {
+          return `/uploads/assets/${file.filename}`;
+        });
+
+        // Update asset with new photo URLs
+        const updatedAsset = await Asset.findByIdAndUpdate(
+          assetId,
+          { $push: { photos: { $each: photoUrls } } },
+          { new: true }
+        );
+
+        res.status(200).json({
+          success: true,
+          message: `${req.files.length} photo(s) uploaded successfully`,
+          data: {
+            photoUrls,
+            asset: updatedAsset
+          }
+        });
+      } catch (updateErr) {
+        // Clean up uploaded files if database update fails
+        req.files.forEach(file => {
+          const filePath = path.join(__dirname, '../../uploads/assets', file.filename);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        });
+
+        res.status(500).json({
+          success: false,
+          error: 'Failed to update asset with photos: ' + updateErr.message
+        });
+      }
     });
   } catch (err) {
     res.status(500).json({

@@ -6,6 +6,9 @@ const path = require('path');
 // Environment check for testing mode
 const isTesting = process.env.NODE_ENV === 'test' || process.env.MOCK_EMAIL === 'true';
 
+// Check if SMTP is configured
+const isSmtpConfigured = config.email.host && config.email.username && config.email.password;
+
 /**
  * Send email using nodemailer
  * @param {Object} options - Email options
@@ -16,9 +19,10 @@ const isTesting = process.env.NODE_ENV === 'test' || process.env.MOCK_EMAIL === 
  * @returns {Promise}
  */
 const sendEmail = async (options) => {
-  // If in testing mode, log email instead of sending
-  if (isTesting) {
+  // If in testing mode or SMTP not configured, log email instead of sending
+  if (isTesting || !isSmtpConfigured) {
     console.log('Mock email service active (not sending real emails)');
+    console.log('SMTP Status:', isSmtpConfigured ? 'Configured' : 'Not configured');
     console.log('-------------------------------------------------');
     console.log(`To: ${options.email}`);
     console.log(`Subject: ${options.subject}`);

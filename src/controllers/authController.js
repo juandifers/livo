@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const User = require('../models/User');
 const sendEmail = require('../utils/sendEmail');
+const { getAccountSetupTemplate, getPasswordResetTemplate } = require('../utils/emailTemplates');
 const { sendTokenResponse } = require('../utils/jwtUtils');
 const config = require('../config/config');
 
@@ -85,28 +86,18 @@ exports.createUser = async (req, res) => {
     const setupToken = user.getAccountSetupToken();
     await user.save({ validateBeforeSave: false });
 
-    // Create setup URL
-    const setupUrl = `${config.baseUrl}/account-setup/${setupToken}`;
+    // Create setup URL - point to the HTML page
+    const setupUrl = `${config.baseUrl}/account-setup.html?token=${setupToken}`;
 
-    // Create message
-    const message = `You have been invited to join the Asset Booking System. Please use the following link to set up your account:\n\n${setupUrl}\n\nThis link is valid for 24 hours.`;
-
-    // HTML version of the message
-    const html = `
-      <h1>Welcome to Livo</h1>
-      <p>You have been invited to join Livo.</p>
-      <p>Please click the link below to set up your account:</p>
-      <p><a href="${setupUrl}">Set up your account</a></p>
-      <p>This link is valid for 24 hours.</p>
-      <p>If you did not request this invitation, please ignore this email.</p>
-    `;
+    // Get email template
+    const emailTemplate = getAccountSetupTemplate(setupUrl, `${user.name} ${user.lastName}`);
 
     // Send email
     await sendEmail({
       email: user.email,
-      subject: 'Account Setup Instructions',
-      message,
-      html
+      subject: 'Welcome to Livo - Complete Your Account Setup',
+      message: emailTemplate.text,
+      html: emailTemplate.html
     });
 
     res.status(201).json({
@@ -206,25 +197,15 @@ exports.forgotPassword = async (req, res) => {
     // Create reset URL
     const resetUrl = `${config.baseUrl}/reset-password/${resetToken}`;
 
-    // Create message
-    const message = `You are receiving this email because you (or someone else) has requested the reset of a password. Please use the following link to reset your password:\n\n${resetUrl}\n\nThis link is valid for 10 minutes.`;
-
-    // HTML version of the message
-    const html = `
-      <h1>Password Reset</h1>
-      <p>You are receiving this email because you (or someone else) has requested the reset of a password.</p>
-      <p>Please click the link below to reset your password:</p>
-      <p><a href="${resetUrl}">Reset Password</a></p>
-      <p>This link is valid for 10 minutes.</p>
-      <p>If you did not request this reset, please ignore this email.</p>
-    `;
+    // Get email template
+    const emailTemplate = getPasswordResetTemplate(resetUrl, `${user.name} ${user.lastName}`);
 
     try {
       await sendEmail({
         email: user.email,
-        subject: 'Password Reset Request',
-        message,
-        html
+        subject: 'Password Reset Request - Livo',
+        message: emailTemplate.text,
+        html: emailTemplate.html
       });
 
       res.status(200).json({
