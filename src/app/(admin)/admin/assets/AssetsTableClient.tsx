@@ -14,6 +14,8 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
   const [location, setLocation] = useState('');
   const [capacity, setCapacity] = useState('');
   const [amenities, setAmenities] = useState('');
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -41,10 +43,25 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
         amenities: amenitiesArray.length > 0 ? amenitiesArray : undefined,
       };
 
-      await clientFetchJson('/assets', {
+      const response = await clientFetchJson('/assets', {
         method: 'POST',
         body: JSON.stringify(assetData),
-      });
+      }) as { data: { _id: string } };
+
+      // Upload photos if any
+      if (photos.length > 0) {
+        try {
+          const photoUrls = await uploadPhotos(response.data._id);
+          // Update asset with photo URLs
+          await clientFetchJson(`/assets/${response.data._id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ photos: photoUrls }),
+          });
+        } catch (photoError) {
+          console.error('Photo upload failed:', photoError);
+          setSubmitError('Asset created but photo upload failed. You can add photos later.');
+        }
+      }
 
       // Reset form
       setName('');
@@ -53,6 +70,8 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
       setLocation('');
       setCapacity('');
       setAmenities('');
+      setPhotos([]);
+      setPhotoPreviews([]);
       setShowAddAsset(false);
 
       // Reload page to show new asset
@@ -64,6 +83,58 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
     }
   };
 
+  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    const validFiles = files.filter(file => {
+      const isValidType = file.type.startsWith('image/');
+      const isValidSize = file.size <= 5 * 1024 * 1024; // 5MB limit
+      return isValidType && isValidSize;
+    });
+
+    if (validFiles.length !== files.length) {
+      setSubmitError('Some files were rejected. Only images under 5MB are allowed.');
+    }
+
+    const newPhotos = [...photos, ...validFiles];
+    setPhotos(newPhotos);
+
+    // Create previews
+    const newPreviews = validFiles.map(file => URL.createObjectURL(file));
+    setPhotoPreviews([...photoPreviews, ...newPreviews]);
+  };
+
+  const removePhoto = (index: number) => {
+    const newPhotos = photos.filter((_, i) => i !== index);
+    const newPreviews = photoPreviews.filter((_, i) => i !== index);
+    
+    // Revoke the object URL to free memory
+    URL.revokeObjectURL(photoPreviews[index]);
+    
+    setPhotos(newPhotos);
+    setPhotoPreviews(newPreviews);
+  };
+
+  const uploadPhotos = async (assetId: string) => {
+    if (photos.length === 0) return [];
+
+    const formData = new FormData();
+    photos.forEach(photo => {
+      formData.append('photos', photo);
+    });
+
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/assets/${assetId}/photos`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to upload photos');
+    }
+
+    const result = await response.json();
+    return result.data.photoUrls;
+  };
+
   const handleCancelAdd = () => {
     setShowAddAsset(false);
     setName('');
@@ -72,6 +143,8 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
     setLocation('');
     setCapacity('');
     setAmenities('');
+    setPhotos([]);
+    setPhotoPreviews([]);
     setSubmitError(null);
   };
 
@@ -158,6 +231,51 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
                 placeholder="e.g., Pool, WiFi, Parking"
               />
+            </div>
+
+            <div className="flex flex-col md:col-span-2">
+              <label className="text-sm text-slate-600 mb-1">Photos</label>
+              <div className="border-2 border-dashed border-slate-300 rounded-lg p-4">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                  id="photo-upload"
+                />
+                <label
+                  htmlFor="photo-upload"
+                  className="cursor-pointer flex flex-col items-center justify-center py-4 text-slate-600 hover:text-slate-800"
+                >
+                  <svg className="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  <span className="text-sm">Click to upload photos</span>
+                  <span className="text-xs text-slate-500">Max 5MB per image</span>
+                </label>
+              </div>
+              
+              {photoPreviews.length > 0 && (
+                <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {photoPreviews.map((preview, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={preview}
+                        alt={`Preview ${index + 1}`}
+                        className="w-full h-24 object-cover rounded-lg border"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removePhoto(index)}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

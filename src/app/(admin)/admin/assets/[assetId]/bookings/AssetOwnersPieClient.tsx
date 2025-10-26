@@ -64,7 +64,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
     return `conic-gradient(${stops})`;
   }, [segments]);
 
-  const isValidTotal = Math.abs(total - 100) < 0.01; // Allow for floating point errors
+  const isValidTotal = total <= 100.01; // Allow for floating point errors, max 100%
 
   const handleEditClick = () => {
     setIsEditMode(true);
@@ -79,7 +79,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
 
   const handleSaveEdit = async () => {
     if (!isValidTotal) {
-      setError('Total ownership must equal 100%');
+      setError('Total ownership cannot exceed 100%');
       return;
     }
 
@@ -150,8 +150,8 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
     setError(null);
 
     try {
-      // Create the user
-      const userRes = await clientFetchJson<{ success: boolean; data: { _id: string } }>('/users', {
+      // Create the user with email invitation
+      const userRes = await clientFetchJson<{ success: boolean; data: { user: { _id: string }, message: string } }>('/auth/users', {
         method: 'POST',
         body: JSON.stringify({
           name: newUserName,
@@ -162,8 +162,11 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
         })
       });
 
-      const newUserId = userRes.data._id;
+      const newUserId = userRes.data.user._id;
       const label = `${newUserName} ${newUserLastName}`;
+
+      // Show success message about email being sent
+      alert(`User created successfully! Account setup email sent to ${newUserEmail}`);
 
       // Add to editable owners
       setEditableOwners([...editableOwners, { userId: newUserId, label, sharePercentage: 12.5, isNew: true }]);
@@ -377,7 +380,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
 
               {/* Total display */}
               <div className={`text-sm font-medium p-2 rounded ${isValidTotal ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-                Total: {total.toFixed(2)}% {isValidTotal ? '✓' : '(Must equal 100%)'}
+                Total: {total.toFixed(2)}% {isValidTotal ? '✓' : '(Cannot exceed 100%)'}
               </div>
             </div>
           )}

@@ -3,6 +3,7 @@ import { serverFetchJson } from '@/lib/api.server';
 import BookingsTableClient from './BookingsTableClient';
 import CreateBookingForm from './CreateBookingForm';
 import AssetCalendarClient from '@/app/(admin)/admin/assets/[assetId]/bookings/AssetCalendarClient';
+import YearSelectorClient from './YearSelectorClient';
 
 type Booking = {
   _id: string;
@@ -63,54 +64,22 @@ export default async function UserBookingsPage({ params }: { params: Promise<{ u
       {/* Allocation by Asset (full-size cards) */}
       <div className="mt-6 space-y-6">
         {(perAssetAllocations || []).map(({ asset, allocation }) => {
-          const allowed = allocation?.allowedDaysPerYear || 0;
-          const booked = allocation?.daysBooked || 0;
-          const pct = allowed > 0 ? Math.min(100, Math.round((booked / allowed) * 100)) : 0;
-          const type1Used = allocation?.specialDates?.type1?.used || 0;
-          const type1Total = allocation?.specialDates?.type1?.total || 0;
-          const type2Used = allocation?.specialDates?.type2?.used || 0;
-          const type2Total = allocation?.specialDates?.type2?.total || 0;
-          const activeUsed = allocation?.activeBookings || 0;
-          const activeMax = allocation?.maxActiveBookings || 0;
-          const windowStart = allocation?.allocationWindow?.start ? new Date(allocation.allocationWindow.start) : null;
-          const windowEnd = allocation?.allocationWindow?.end ? new Date(allocation.allocationWindow.end) : null;
-          const fmt = (d: Date | null) => d ? d.toISOString().split('T')[0] : '';
           return (
             <div key={asset._id} className="rounded-xl border bg-white shadow-sm p-4">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">{asset.name || 'Asset'} Allocation Summary</div>
-                {(windowStart && windowEnd) ? (
-                  <div className="text-xs text-slate-600">
-                    Anniversary window: {fmt(windowStart)} → {fmt(windowEnd)}
-                  </div>
-                ) : null}
+                <div className="text-xs text-slate-600">
+                  Yearly allocation (January 1st - December 31st)
+                </div>
               </div>
-              <div className="flex items-center gap-6 flex-wrap">
-                <div className="text-center">
-                  <div className="text-2xl font-bold">{booked}</div>
-                  <div className="text-sm text-slate-600">Days Used</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold">{allowed}</div>
-                  <div className="text-sm text-slate-600">Total Allocation</div>
-                </div>
-                <div className="flex-1 min-w-[240px]">
-                  <div className="h-3 bg-slate-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-slate-900" style={{ width: `${pct}%` }} />
-                  </div>
-                  <div className="mt-1 text-xs text-slate-600">{pct}% of annual allocation used</div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-4 w-full">
-                  <div className="rounded-lg border p-3">
-                    <div className="font-medium mb-1">Special Dates</div>
-                    <div className="text-sm text-slate-700">Type 1: {type1Used} / {type1Total}</div>
-                    <div className="text-sm text-slate-700">Type 2: {type2Used} / {type2Total}</div>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <div className="font-medium mb-1">Active Booking Slots</div>
-                    <div className="text-sm text-slate-700">{activeUsed} of {activeMax} used</div>
-                  </div>
-                </div>
+              
+              {/* Year Selector */}
+              <div className="mb-4">
+                <YearSelectorClient 
+                  userId={userId} 
+                  assetId={asset._id} 
+                  allocation={allocation}
+                />
               </div>
 
               {/* Calendar (user's point of view for this asset) */}

@@ -87,8 +87,8 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
       setSelectedDate(null);
       setSelectedDetails(null);
       try {
-        const startStr = firstDay.toISOString().split('T')[0];
-        const endStr = lastDay.toISOString().split('T')[0];
+        const startStr = formatDateString(firstDay);
+        const endStr = formatDateString(lastDay);
         const res = await clientFetchJson<AvailabilityResp>(
           `/bookings/availability/${assetId}?startDate=${startStr}&endDate=${endStr}`
         );
@@ -148,7 +148,7 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
     const out: string[] = [];
     const step = new Date(a);
     while (step <= b) {
-      out.push(step.toISOString().split('T')[0]);
+      out.push(formatDateString(step));
       step.setDate(step.getDate() + 1);
     }
     return out;
@@ -181,8 +181,8 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
         segEnd.setDate(segEnd.getDate() + 6);
         if (segEnd > last) segEnd.setTime(last.getTime());
         segments.push({
-          start: segStart.toISOString().split('T')[0],
-          end: segEnd.toISOString().split('T')[0],
+          start: formatDateString(segStart),
+          end: formatDateString(segEnd),
         });
         cur.setDate(cur.getDate() + 7);
       }
@@ -262,7 +262,14 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
   function addDays(dateStr: string, delta: number) {
     const d = new Date(dateStr);
     d.setDate(d.getDate() + delta);
-    return d.toISOString().split('T')[0];
+    return formatDateString(d);
+  }
+
+  function formatDateString(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   function colorForUser(userId: string | undefined) {
@@ -366,7 +373,7 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
           <div className="grid grid-cols-7">
             {weeks.flat().map((d, idx) => {
               if (!d) return <div key={idx} className="h-20 border-t border-r bg-white"/>;
-              const dateStr = d.toISOString().split('T')[0];
+              const dateStr = formatDateString(d);
               const day = calendar[dateStr];
               const booked = !!(day && day.bookings.length > 0);
               const bg = booked ? 'bg-slate-200' : 'bg-white';
@@ -514,8 +521,8 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
                       body: JSON.stringify({ userId: createUserId, assetId, startDate: createStart, endDate: createEnd }),
                     });
                     // Refresh current month data
-                    const startStr = firstDay.toISOString().split('T')[0];
-                    const endStr = lastDay.toISOString().split('T')[0];
+                    const startStr = formatDateString(firstDay);
+                    const endStr = formatDateString(lastDay);
                     const res = await clientFetchJson<AvailabilityResp>(`/bookings/availability/${assetId}?startDate=${startStr}&endDate=${endStr}`);
                     setCalendar(res.data.calendar || {});
                     setSpecialType1(res.data.specialDates?.type1 || []);
