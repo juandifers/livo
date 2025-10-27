@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -13,6 +13,7 @@ import {
   Dimensions
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { bookingApi } from '../../api';
 import { format } from 'date-fns';
 
@@ -42,6 +43,15 @@ const BookingsScreen = ({ navigation }) => {
   useEffect(() => {
     loadBookings();
   }, []);
+
+  // Refresh data whenever screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (!isLoading) {
+        loadBookings();
+      }
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -109,6 +119,11 @@ const BookingsScreen = ({ navigation }) => {
   const renderBookingItem = ({ item }) => {
     const daysLeft = getDaysLeft(item.endDate);
     
+    // Add null check for asset
+    if (!item.asset) {
+      return null; // Skip rendering this item if asset is null
+    }
+    
     return (
       <TouchableOpacity 
         style={styles.bookingCard}
@@ -121,8 +136,8 @@ const BookingsScreen = ({ navigation }) => {
         />
         <View style={styles.bookingContent}>
           <View style={styles.bookingHeader}>
-            <Text style={styles.assetName}>{item.asset.name} {item.asset.type === 'boat' ? '(T)' : '(H)'}</Text>
-            <Text style={styles.assetLocation}>{item.asset.location || 'Cartagena'}</Text>
+            <Text style={styles.assetName}>{item.asset?.name || 'Unknown Asset'}</Text>
+            <Text style={styles.assetLocation}>{item.asset?.location || 'Location not available'}</Text>
             
             <View style={styles.dateContainer}>
               <Text style={styles.bookingDates}>
@@ -233,7 +248,7 @@ const BookingsScreen = ({ navigation }) => {
             />
             
             {/* Smart Scheduling Rules */}
-            <TouchableOpacity style={styles.schedulingRulesContainer}>
+            <TouchableOpacity style={styles.schedulingRulesContainer} onPress={() => navigation.navigate('SchedulingRules') }>
               <Text style={styles.schedulingRulesText}>Smart Scheduling Rules</Text>
               <MaterialIcons name="chevron-right" size={24} color="#000" />
             </TouchableOpacity>
@@ -402,7 +417,7 @@ const styles = StyleSheet.create({
   },
   schedulingRulesContainer: {
     position: 'absolute',
-    bottom: 70,
+    bottom: 50,
     left: 0,
     right: 0,
     flexDirection: 'row',

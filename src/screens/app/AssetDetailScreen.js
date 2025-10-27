@@ -9,10 +9,12 @@ import {
   Image,
   SafeAreaView,
   StatusBar,
-  Dimensions
+  Dimensions,
+  FlatList,
+  Modal
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { assetApi, bookingApi } from '../../api';
+import { assetApi, bookingApi, authApi } from '../../api';
 
 const { width } = Dimensions.get('window');
 
@@ -20,9 +22,27 @@ const AssetDetailScreen = ({ route, navigation }) => {
   const { assetId, asset: initialAsset } = route.params;
   const [asset, setAsset] = useState(initialAsset || null);
   const [bookings, setBookings] = useState([]);
+  const [userAllocation, setUserAllocation] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(!initialAsset);
   const [isLoadingBookings, setIsLoadingBookings] = useState(true);
+  const [isLoadingAllocation, setIsLoadingAllocation] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [showYearPicker, setShowYearPicker] = useState(false);
+
+  const loadCurrentUser = async () => {
+    try {
+      const result = await authApi.getCurrentUser();
+      if (result.success) {
+        setCurrentUser(result.data);
+        return result.data;
+      }
+    } catch (error) {
+      console.error('Error loading current user:', error);
+    }
+    return null;
+  };
 
   const loadAssetDetails = async () => {
     if (!initialAsset) {
@@ -54,13 +74,50 @@ const AssetDetailScreen = ({ route, navigation }) => {
     }
   };
 
+  const loadUserAllocation = async (user) => {
+    try {
+      setIsLoadingAllocation(true);
+      const result = await bookingApi.getUserAllocation(user._id, assetId);
+      if (result.success) {
+        setUserAllocation(result.data);
+      }
+    } catch (error) {
+      console.error('Error loading user allocation:', error);
+    } finally {
+      setIsLoadingAllocation(false);
+    }
+  };
+
   useEffect(() => {
-    loadAssetDetails();
-    loadAssetBookings();
+    const loadData = async () => {
+      const user = await loadCurrentUser();
+      await loadAssetDetails();
+      await loadAssetBookings();
+      if (user) {
+        await loadUserAllocation(user);
+      }
+    };
+    loadData();
   }, [assetId]);
 
-  // Get asset image based on type
+  // Get asset image - prioritize uploaded photos, fallback to default
   const getAssetImage = () => {
+    // If asset has uploaded photos, use the first one
+    if (asset?.photos && asset.photos.length > 0) {
+      const photoUrl = asset.photos[0];
+      // Handle both relative and absolute URLs
+      if (photoUrl.startsWith('http')) {
+        return photoUrl;
+      } else {
+        // Construct full URL for relative paths
+        const { getCurrentApiConfig } = require('../../config');
+        const apiConfig = getCurrentApiConfig();
+        const baseUrl = apiConfig.baseURL.replace('/api', '');
+        return `${baseUrl}${photoUrl}`;
+      }
+    }
+    
+    // Fallback to default images based on type
     if (asset?.type === 'boat') {
       return 'https://images.unsplash.com/photo-1564834744159-ff0ea41ba4b9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80';
     } else {
@@ -68,34 +125,62 @@ const AssetDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  // Mock ownership fraction based on owners if available
-  const getOwnershipFraction = () => {
-    if (asset?.owners?.length > 0) {
-      // Find the user's ownership
-      const userOwnership = asset.owners.find(owner => owner.isCurrentUser);
-      if (userOwnership) {
-        const fraction = userOwnership.sharePercentage / 12.5;
-        return `1/${fraction} Ownership`;
-      }
+  // Get all asset images for gallery
+  const getAssetImages = () => {
+    if (asset?.photos && asset.photos.length > 0) {
+      const { getCurrentApiConfig } = require('../../config');
+      const apiConfig = getCurrentApiConfig();
+      const baseUrl = apiConfig.baseURL.replace('/api', '');
+      
+      return asset.photos.map(photoUrl => {
+        if (photoUrl.startsWith('http')) {
+          return photoUrl;
+        } else {
+          return `${baseUrl}${photoUrl}`;
+        }
+      });
     }
-    return '1/8 Ownership'; // Default value
+    
+    // Fallback to single default image
+    return [getAssetImage()];
   };
 
-  // Calculate used days out of total
+  // Get ownership display from real data
+  const getOwnershipDisplay = () => {
+    if (userAllocation?.sharePercentage) {
+      const percentage = userAllocation.sharePercentage;
+      // Convert percentage to eighths: 12.5% = 1/8, 25% = 2/8, 50% = 4/8, etc.
+      const eighths = Math.round(percentage / 12.5);
+      return `${percentage}% (${eighths}/8 Ownership)`;
+    }
+    return 'No ownership data'; // Default value
+  };
+
+  // Get used days from real data
   const getUsedDays = () => {
-    // In a real app, this would come from the backend
+    if (userAllocation) {
+      return {
+        used: userAllocation.daysBooked || 0,
+        total: userAllocation.allowedDaysPerYear || 0
+      };
+    }
     return {
       used: 0,
-      total: 44 // Assuming 1/8 ownership gives 44 days
+      total: 0
     };
   };
 
-  // Get special dates usage
+  // Get special dates usage from real data
   const getSpecialDatesUsage = () => {
-    // In a real app, this would come from the backend
+    if (userAllocation?.specialDates) {
+      return {
+        type1: userAllocation.specialDates.type1,
+        type2: userAllocation.specialDates.type2
+      };
+    }
     return {
-      type1: { used: 0, total: 1 },
-      type2: { used: 0, total: 1 }
+      type1: { used: 0, total: 0 },
+      type2: { used: 0, total: 0 }
     };
   };
 
@@ -116,10 +201,23 @@ const AssetDetailScreen = ({ route, navigation }) => {
       <ScrollView style={styles.container} bounces={false}>
         {/* Image Header */}
         <View style={styles.imageContainer}>
-          <Image
-            source={{ uri: getAssetImage() }}
-            style={styles.assetImage}
-            resizeMode="cover"
+          <FlatList
+            data={getAssetImages()}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item, index) => index.toString()}
+            onMomentumScrollEnd={(event) => {
+              const newIndex = Math.round(event.nativeEvent.contentOffset.x / width);
+              setCurrentImageIndex(newIndex);
+            }}
+            renderItem={({ item }) => (
+              <Image
+                source={{ uri: item }}
+                style={styles.assetImage}
+                resizeMode="cover"
+              />
+            )}
           />
           
           {/* Back Button */}
@@ -130,26 +228,38 @@ const AssetDetailScreen = ({ route, navigation }) => {
             <MaterialIcons name="arrow-back" size={24} color="black" />
           </TouchableOpacity>
           
-          {/* Image Indicator */}
-          <View style={styles.indicatorContainer}>
-            <View style={styles.indicator} />
-          </View>
+          {/* Image Indicators */}
+          {getAssetImages().length > 1 && (
+            <View style={styles.indicatorContainer}>
+              {getAssetImages().map((_, index) => (
+                <View 
+                  key={index}
+                  style={[
+                    styles.indicator, 
+                    index === currentImageIndex && styles.activeIndicator
+                  ]} 
+                />
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Asset Details */}
         <View style={styles.detailsContainer}>
           {/* Asset Name & Type */}
           <Text style={styles.assetName}>
-            {asset.name} {asset.type === 'boat' ? '(T)' : '(H)'}
+            {asset.name}
           </Text>
           
           {/* Ownership */}
-          <Text style={styles.ownershipText}>{getOwnershipFraction()}</Text>
+          <Text style={styles.ownershipText}>
+            {isLoadingAllocation ? 'Loading...' : getOwnershipDisplay()}
+          </Text>
           
           {/* Category */}
           <View style={styles.detailSection}>
             <Text style={styles.sectionTitle}>Category</Text>
-            <Text style={styles.sectionValue}>
+            <Text style={styles.breadcrumbText}>
               {asset.type === 'boat' ? 'Boats' : 'Homes'}
             </Text>
           </View>
@@ -171,16 +281,204 @@ const AssetDetailScreen = ({ route, navigation }) => {
             <Text style={styles.sectionTitle}>Annual stay tracker</Text>
             <View style={styles.stayTrackerSection}>
               <Text style={styles.trackerTitle}>Day Used / Total Available</Text>
-              <Text style={styles.trackerValue}>{usedDays.used}/{usedDays.total}</Text>
+              <Text style={styles.trackerValue}>
+                {isLoadingAllocation ? 'Loading...' : `${usedDays.used}/${usedDays.total}`}
+              </Text>
             </View>
           </View>
           
-          {/* Special Dates */}
-          <View style={styles.detailSection}>
-            <Text style={styles.sectionTitle}>Special Dates Used/ Total Available</Text>
-            <Text style={styles.trackerValue}>
-              Tipo 1: {specialDates.type1.used}/ {specialDates.type1.total} y Tipo 2: {specialDates.type2.used}/ {specialDates.type2.total}
-            </Text>
+          {/**
+           * Special Dates quick summary (commented out per request) - keep for potential re-enable
+           *
+           * <View style={styles.detailSection}>
+           *   <Text style={styles.sectionTitle}>Special Dates Used/ Total Available</Text>
+           *   <Text style={styles.trackerValue}>
+           *     Tipo 1: {specialDates.type1.used} / {specialDates.type1.total} y Tipo 2: {specialDates.type2.used} / {specialDates.type2.total}
+           *   </Text>
+           * </View>
+           */}
+          
+          {/* Booking Summary */}
+          <View style={styles.summaryContainer}>
+            {/* Year Selector */}
+            <TouchableOpacity 
+              style={styles.yearSelector}
+              onPress={() => setShowYearPicker(true)}
+            >
+              <Text style={styles.yearSelectorText}>{selectedYear}</Text>
+              <MaterialIcons name="arrow-drop-down" size={20} color="#666" />
+            </TouchableOpacity>
+            
+            <Text style={styles.summaryTitle}>Annual Booking Summary</Text>
+            
+            {userAllocation && (
+              <>
+                {/* Selected Year Summary */}
+                <View style={styles.summaryRow}>
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryValue}>
+                      {(() => {
+                        if (selectedYear === userAllocation.currentYear?.year) {
+                          return userAllocation.currentYear?.daysRemaining || userAllocation.daysRemaining;
+                        } else if (selectedYear === userAllocation.nextYear?.year) {
+                          return userAllocation.nextYear?.daysRemaining || 0;
+                        }
+                        return userAllocation.allowedDaysPerYear; // Default for other years
+                      })()}
+                    </Text>
+                    <Text style={styles.summaryLabel}>Days Remaining</Text>
+                  </View>
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryValue}>
+                      {(() => {
+                        if (selectedYear === userAllocation.currentYear?.year) {
+                          return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
+                        } else if (selectedYear === userAllocation.nextYear?.year) {
+                          return userAllocation.nextYear?.daysBooked || 0;
+                        }
+                        return 0; // Default for other years
+                      })()}
+                    </Text>
+                    <Text style={styles.summaryLabel}>Booked</Text>
+                  </View>
+                  <View style={styles.summaryItem}>
+                    <Text style={styles.summaryValue}>{userAllocation.allowedDaysPerYear}</Text>
+                    <Text style={styles.summaryLabel}>Total</Text>
+                  </View>
+                </View>
+
+                {/* Progress Bar */}
+                <View style={styles.progressContainer}>
+                  <View style={styles.progressBarBackground}>
+                    <View 
+                      style={[
+                        styles.progressBar, 
+                        { 
+                          width: `${(() => {
+                            const daysBooked = (() => {
+                              if (selectedYear === userAllocation.currentYear?.year) {
+                                return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
+                              } else if (selectedYear === userAllocation.nextYear?.year) {
+                                return userAllocation.nextYear?.daysBooked || 0;
+                              }
+                              return 0;
+                            })();
+                            return (daysBooked / userAllocation.allowedDaysPerYear) * 100;
+                          })()}%`,
+                          backgroundColor: (() => {
+                            const daysBooked = (() => {
+                              if (selectedYear === userAllocation.currentYear?.year) {
+                                return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
+                              } else if (selectedYear === userAllocation.nextYear?.year) {
+                                return userAllocation.nextYear?.daysBooked || 0;
+                              }
+                              return 0;
+                            })();
+                            return daysBooked > userAllocation.allowedDaysPerYear * 0.8 ? '#ff6b6b' : '#1E4640';
+                          })()
+                        }
+                      ]} 
+                    />
+                  </View>
+                  <Text style={styles.progressText}>
+                    {(() => {
+                      const daysBooked = (() => {
+                        if (selectedYear === userAllocation.currentYear?.year) {
+                          return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
+                        } else if (selectedYear === userAllocation.nextYear?.year) {
+                          return userAllocation.nextYear?.daysBooked || 0;
+                        }
+                        return 0;
+                      })();
+                      return Math.round((daysBooked / userAllocation.allowedDaysPerYear) * 100);
+                    })()}% of {selectedYear} allocation used
+                  </Text>
+                </View>
+
+                {/* Special Dates Summary */}
+                {userAllocation.specialDates && (
+                  <View style={styles.specialDatesContainer}>
+                    <Text style={styles.specialDatesTitle}>Special Dates</Text>
+                   
+                    
+                    <View style={styles.specialDatesRow}>
+                      {/* Type 1 Special Dates */}
+                      <View style={styles.specialDateItem}>
+                        <View style={styles.specialDateHeader}>
+                          <Text style={styles.specialDateType}></Text>
+                          <View style={[styles.specialDateBadge, styles.type1Badge]}>
+                            <Text style={styles.specialDateBadgeText}>TYPE 1</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.specialDateUsage}>
+                          {userAllocation.specialDates.type1.used} / {userAllocation.specialDates.type1.total} used
+                        </Text>
+                        <View style={styles.specialDateProgressContainer}>
+                          <View style={styles.specialDateProgressBackground}>
+                            <View 
+                              style={[
+                                styles.specialDateProgress,
+                                styles.type1Progress,
+                                { 
+                                  width: userAllocation.specialDates.type1.total > 0 
+                                    ? `${(userAllocation.specialDates.type1.used / userAllocation.specialDates.type1.total) * 100}%`
+                                    : '0%'
+                                }
+                              ]} 
+                            />
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Type 2 Special Dates */}
+                      <View style={styles.specialDateItem}>
+                        <View style={styles.specialDateHeader}>
+                          <Text style={styles.specialDateType}></Text>
+                          <View style={[styles.specialDateBadge, styles.type2Badge]}>
+                            <Text style={styles.specialDateBadgeText}>TYPE 2</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.specialDateUsage}>
+                          {userAllocation.specialDates.type2.used} / {userAllocation.specialDates.type2.total} used
+                        </Text>
+                        <View style={styles.specialDateProgressContainer}>
+                          <View style={styles.specialDateProgressBackground}>
+                            <View 
+                              style={[
+                                styles.specialDateProgress,
+                                styles.type2Progress,
+                                { 
+                                  width: userAllocation.specialDates.type2.total > 0 
+                                    ? `${(userAllocation.specialDates.type2.used / userAllocation.specialDates.type2.total) * 100}%`
+                                    : '0%'
+                                }
+                              ]} 
+                            />
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                    
+                  </View>
+                )}
+
+                {/* Active Bookings */}
+                <View style={styles.activeBookingsContainer}>
+                  <Text style={styles.activeBookingsTitle}>Active Bookings</Text>
+                  <Text style={styles.activeBookingsCount}>
+                    {(() => {
+                      if (selectedYear === userAllocation.currentYear?.year) {
+                        return `${userAllocation.currentYearActiveBookings || 0} of ${userAllocation.maxActiveBookings} slots used`;
+                      } else if (selectedYear === userAllocation.nextYear?.year) {
+                        return `${userAllocation.nextYearActiveBookings || 0} of ${userAllocation.maxActiveBookings} slots used`;
+                      }
+                      return `${userAllocation.activeBookings || 0} of ${userAllocation.maxActiveBookings} slots used`;
+                    })()}
+                  </Text>
+                </View>
+
+              </>
+            )}
           </View>
           
           {/* Book Now Button */}
@@ -193,6 +491,62 @@ const AssetDetailScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Year Picker Modal */}
+      <Modal
+        visible={showYearPicker}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowYearPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Year</Text>
+              <TouchableOpacity 
+                style={styles.closeButton}
+                onPress={() => setShowYearPicker(false)}
+              >
+                <MaterialIcons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.yearList}>
+              {(() => {
+                const currentYear = new Date().getFullYear();
+                const years = [];
+                // Show current year, next year, and previous year
+                for (let year = currentYear - 1; year <= currentYear + 1; year++) {
+                  years.push(year);
+                }
+                return years.map(year => (
+                  <TouchableOpacity
+                    key={year}
+                    style={[
+                      styles.yearOption,
+                      selectedYear === year && styles.selectedYearOption
+                    ]}
+                    onPress={() => {
+                      setSelectedYear(year);
+                      setShowYearPicker(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.yearOptionText,
+                      selectedYear === year && styles.selectedYearOptionText
+                    ]}>
+                      {year}
+                    </Text>
+                    {selectedYear === year && (
+                      <MaterialIcons name="check" size={20} color="#007AFF" />
+                    )}
+                  </TouchableOpacity>
+                ));
+              })()}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -218,7 +572,7 @@ const styles = StyleSheet.create({
     position: 'relative'
   },
   assetImage: {
-    width: '100%',
+    width: width,
     height: '100%'
   },
   backButton: {
@@ -249,8 +603,11 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#fff',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
     margin: 4
+  },
+  activeIndicator: {
+    backgroundColor: '#fff'
   },
   detailsContainer: {
     padding: 20
@@ -318,6 +675,246 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 10
+  },
+  breadcrumbText: {
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  summaryContainer: {
+    padding: 20,
+    alignItems: 'center'
+  },
+  summaryTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center'
+  },
+  yearSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+    alignSelf: 'center',
+    marginBottom: 15
+  },
+  yearSelectorText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#495057',
+    marginRight: 4
+  },
+  yearSection: {
+    marginBottom: 20,
+    padding: 15,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e9ecef'
+  },
+  yearTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+    color: '#495057'
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  summaryItem: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    minWidth: 90
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  summaryLabel: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center'
+  },
+  progressContainer: {
+    marginBottom: 20,
+    width: '90%',
+    alignItems: 'center'
+  },
+  progressBarBackground: {
+    height: 14,
+    backgroundColor: '#eee',
+    borderRadius: 10,
+    overflow: 'hidden',
+    width: '100%'
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#1E4640',
+    borderRadius: 10
+  },
+  progressText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginTop: 8,
+    textAlign: 'center'
+  },
+  specialDatesContainer: {
+    padding: 20,
+    alignItems: 'center'
+  },
+  specialDatesTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    textAlign: 'center'
+  },
+  specialDatesSubtitle: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 20,
+    textAlign: 'center'
+  },
+  specialDatesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  specialDateItem: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    minWidth: 140
+  },
+  specialDateHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 5
+  },
+  specialDateType: {
+    fontSize: 16,
+    fontWeight: 'bold'
+  },
+  specialDateBadge: {
+    backgroundColor: '#eee',
+    borderRadius: 10,
+    padding: 5
+  },
+  specialDateBadgeText: {
+    fontSize: 14,
+    fontWeight: 'bold'
+  },
+  specialDateUsage: {
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  specialDateProgressContainer: {
+    width: 100,
+    height: 20,
+    backgroundColor: '#eee',
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginTop: 5
+  },
+  specialDateProgressBackground: {
+    height: '100%',
+    backgroundColor: '#eee',
+    borderRadius: 10,
+    overflow: 'hidden'
+  },
+  specialDateProgress: {
+    height: '100%',
+    backgroundColor: '#6200ee',
+    borderRadius: 10
+  },
+  type1Badge: {
+    backgroundColor: '#ff6b6b'
+  },
+  type2Badge: {
+    backgroundColor: '#6200ee'
+  },
+  type1Progress: {
+    backgroundColor: '#ff6b6b'
+  },
+  type2Progress: {
+    backgroundColor: '#6200ee'
+  },
+  specialDatesNote: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 10,
+    textAlign: 'center'
+  },
+  activeBookingsContainer: {
+    padding: 20
+  },
+  activeBookingsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 20
+  },
+  activeBookingsCount: {
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '80%',
+    maxHeight: '60%'
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333'
+  },
+  closeButton: {
+    padding: 4
+  },
+  yearList: {
+    maxHeight: 200
+  },
+  yearOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0'
+  },
+  selectedYearOption: {
+    backgroundColor: '#f0f8ff'
+  },
+  yearOptionText: {
+    fontSize: 16,
+    color: '#333'
+  },
+  selectedYearOptionText: {
+    color: '#007AFF',
+    fontWeight: '600'
   }
 });
 

@@ -81,6 +81,8 @@ const ProfileScreen = ({ navigation }) => {
           
           {renderSettingItem('Privacy Policy', () => console.log('Privacy pressed'))}
           
+          {renderSettingItem('API Test Console', () => navigation.navigate('ApiTest'))}
+          
           {renderSettingItem('Logout', handleLogout)}
         </ScrollView>
       </View>

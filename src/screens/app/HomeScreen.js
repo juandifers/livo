@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -13,6 +13,7 @@ import {
   SafeAreaView
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { assetApi } from '../../api';
 
@@ -45,6 +46,13 @@ const HomeScreen = ({ navigation }) => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Refresh data whenever screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -118,7 +126,7 @@ const HomeScreen = ({ navigation }) => {
                   />
                   <View style={styles.assetInfo}>
                     <Text style={styles.assetName}>
-                      {asset.name} {asset.type === 'boat' ? '(T)' : '(H)'}
+                      {asset.name}
                     </Text>
                     <Text style={styles.assetLocation}>
                       {asset.location}

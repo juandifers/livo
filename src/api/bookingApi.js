@@ -1,8 +1,6 @@
-import apiClient from './apiClient';
+import apiClient, { DEV_MODE } from './apiClient';
 import { testBookings } from '../utils/testData';
-
-// Check if we're in development mode (should match authApi)
-const DEV_MODE = true;
+import DateUtils from '../utils/dateUtils';
 
 // Booking API endpoints
 const getUserBookings = async () => {
@@ -12,13 +10,87 @@ const getUserBookings = async () => {
       return { success: true, data: testBookings };
     }
     
+    // In production mode - first get current user ID, then fetch bookings for that user
+    try {
+      const userResponse = await apiClient.get('/auth/me');
+      const userId = userResponse.data.data._id;
+      
+      const response = await apiClient.get(`/bookings?user=${userId}`);
+      const bookings = response.data.data.map(booking => DateUtils.parseBookingDates(booking));
+      return { success: true, data: bookings };
+    } catch (userError) {
+      // If we can't get user ID, try the old endpoint as fallback
+      const response = await apiClient.get('/bookings');
+      const bookings = response.data.data.map(booking => DateUtils.parseBookingDates(booking));
+      return { success: true, data: bookings };
+    }
+  } catch (error) {
+    console.error('Error fetching user bookings:', error);
+    return { 
+      success: false, 
+      error: error.response?.data?.error || 'Failed to fetch user bookings' 
+    };
+  }
+};
+
+const getUserAllocation = async (userId, assetId) => {
+  try {
+    // In development mode, simulate allocation data
+    if (DEV_MODE) {
+      const currentYear = new Date().getFullYear();
+      const nextYear = currentYear + 1;
+      
+      return { 
+        success: true, 
+        data: {
+          sharePercentage: 50, // Sarah has 50% ownership of Serenity Dreams
+          allowedDaysPerYear: 176, // 50% ownership = 176 days (4 * 44)
+          extraAllowedDays: 40, // 50% ownership = 40 extra days (4 * 10)
+          maxActiveBookings: 24, // 50% ownership = 24 bookings (4 * 6)
+          maxStayLength: 56, // 50% ownership = 56 days (4 * 14)
+          
+          // Current year allocation
+          currentYear: {
+            year: currentYear,
+            daysBooked: 7,
+            daysRemaining: 169,
+            extraDaysUsed: 0,
+            extraDaysRemaining: 40,
+            specialDateUsage: { type1: 0, type2: 0 },
+            bookings: []
+          },
+          
+          // Next year allocation
+          nextYear: {
+            year: nextYear,
+            daysBooked: 0,
+            daysRemaining: 176,
+            extraDaysUsed: 0,
+            extraDaysRemaining: 40,
+            specialDateUsage: { type1: 0, type2: 0 },
+            bookings: []
+          },
+          
+          // Legacy fields for backward compatibility
+          daysBooked: 7,
+          daysRemaining: 169,
+          extraDaysUsed: 0,
+          extraDaysRemaining: 40,
+          activeBookings: 1,
+          activeBookingsRemaining: 23,
+          currentBookings: [],
+          futureBookings: []
+        }
+      };
+    }
+    
     // In production mode
-    const response = await apiClient.get('/bookings/me');
-    return { success: true, data: response.data };
+    const response = await apiClient.get(`/bookings/allocation/${userId}/${assetId}`);
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to fetch user bookings' 
+      error: error.response?.data?.error || 'Failed to fetch user allocation' 
     };
   }
 };
@@ -33,11 +105,11 @@ const getAssetBookings = async (assetId) => {
     
     // In production mode
     const response = await apiClient.get(`/bookings/asset/${assetId}`);
-    return { success: true, data: response.data };
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to fetch asset bookings' 
+      error: error.response?.data?.error || 'Failed to fetch asset bookings' 
     };
   }
 };
@@ -56,112 +128,170 @@ const getBookingById = async (bookingId) => {
     
     // In production mode
     const response = await apiClient.get(`/bookings/${bookingId}`);
-    return { success: true, data: response.data };
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to fetch booking details' 
+      error: error.response?.data?.error || 'Failed to fetch booking details' 
     };
   }
 };
 
 const createBooking = async (bookingData) => {
   try {
-    // In development mode, simulate creating a booking
+    // Prepare booking data using DateUtils
+    const preparedData = DateUtils.prepareBookingForApi(bookingData);
+    
+    // In development mode, simulate booking creation
     if (DEV_MODE) {
-      // Generate a fake booking with a new ID
       const newBooking = {
-        _id: 'booking' + Date.now(),
-        user: '1234567890',
-        asset: bookingData.asset,
-        startDate: bookingData.startDate,
-        endDate: bookingData.endDate,
+        _id: 'test-booking-' + Date.now(),
+        ...preparedData,
         status: 'pending',
-        notes: bookingData.notes || '',
-        createdAt: new Date().toISOString()
+        createdAt: DateUtils.toApiFormat(new Date())
       };
-      
-      // Add to test bookings (this won't persist after app reload)
-      testBookings.push(newBooking);
-      
       return { success: true, data: newBooking };
     }
     
     // In production mode
-    const response = await apiClient.post('/bookings', bookingData);
-    return { success: true, data: response.data };
+    const response = await apiClient.post('/bookings', preparedData);
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to create booking' 
+      error: error.response?.data?.error || 'Failed to create booking' 
     };
   }
 };
 
-const updateBooking = async (bookingId, bookingData) => {
+const updateBooking = async (bookingId, updateData) => {
   try {
-    // In development mode, simulate updating a booking
+    // In development mode, simulate update
     if (DEV_MODE) {
-      const bookingIndex = testBookings.findIndex(booking => booking._id === bookingId);
-      
-      if (bookingIndex !== -1) {
-        // Update the booking in the test data
-        testBookings[bookingIndex] = {
-          ...testBookings[bookingIndex],
-          ...bookingData,
-          updatedAt: new Date().toISOString()
-        };
-        
-        return { success: true, data: testBookings[bookingIndex] };
-      } else {
-        return { success: false, error: 'Booking not found' };
-      }
+      return { success: true, data: { ...updateData, _id: bookingId } };
     }
     
     // In production mode
-    const response = await apiClient.put(`/bookings/${bookingId}`, bookingData);
-    return { success: true, data: response.data };
+    const response = await apiClient.put(`/bookings/${bookingId}`, updateData);
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to update booking' 
+      error: error.response?.data?.error || 'Failed to update booking' 
     };
   }
 };
 
 const cancelBooking = async (bookingId) => {
   try {
-    // In development mode, simulate cancelling a booking
+    // In development mode, simulate cancellation
     if (DEV_MODE) {
-      const bookingIndex = testBookings.findIndex(booking => booking._id === bookingId);
-      
-      if (bookingIndex !== -1) {
-        // Update the booking status to cancelled
-        testBookings[bookingIndex].status = 'cancelled';
-        testBookings[bookingIndex].updatedAt = new Date().toISOString();
-        
-        return { success: true, data: testBookings[bookingIndex] };
-      } else {
-        return { success: false, error: 'Booking not found' };
-      }
+      return { success: true, data: { message: 'Booking cancelled successfully' } };
     }
     
     // In production mode
-    const response = await apiClient.put(`/bookings/${bookingId}/cancel`);
-    return { success: true, data: response.data };
+    const response = await apiClient.delete(`/bookings/${bookingId}`);
+    return { success: true, data: response.data.data };
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Failed to cancel booking' 
+      error: error.response?.data?.error || 'Failed to cancel booking' 
+    };
+  }
+};
+
+const getAssetAvailability = async (assetId, startDate, endDate) => {
+  try {
+    // In development mode, return mock availability data
+    if (DEV_MODE) {
+      return {
+        success: true,
+        data: {
+          unavailableDates: [
+            '2025-08-20',
+            '2025-08-21',
+            '2025-08-22',
+          ],
+          specialDates: {
+            type1: [
+              '2025-08-07',
+              '2025-08-08',
+              '2025-08-09',
+              '2025-08-10',
+              '2025-08-15',
+              '2025-08-16',
+              '2025-08-17',
+              '2025-08-18',
+            ],
+            type2: []
+          },
+          bookings: []
+        }
+      };
+    }
+    
+    // In production mode - construct query parameters
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    
+    const queryString = params.toString();
+    const url = `/bookings/availability/${assetId}${queryString ? `?${queryString}` : ''}`;
+    
+    const response = await apiClient.get(url);
+    
+    // The backend now returns both calendar data and special dates
+    const { calendar, specialDates } = response.data.data;
+    
+    const unavailableDates = [];
+    const bookings = [];
+    
+    // Extract unavailable dates and bookings from calendar
+    if (calendar) {
+      Object.keys(calendar).forEach(dateStr => {
+        const dayInfo = calendar[dateStr];
+        if (!dayInfo.available) {
+          unavailableDates.push(dateStr);
+          if (dayInfo.bookings && dayInfo.bookings.length > 0) {
+            dayInfo.bookings.forEach(booking => {
+              bookings.push({
+                date: dateStr,
+                bookingId: booking.bookingId,
+                userId: booking.userId
+              });
+            });
+          }
+        }
+      });
+    }
+    
+    return { 
+      success: true, 
+      data: {
+        unavailableDates,
+        specialDates: specialDates || {
+          type1: [],
+          type2: []
+        },
+        bookings,
+        calendar
+      }
+    };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error.response?.data?.error || 'Failed to fetch asset availability' 
     };
   }
 };
 
 export default {
   getUserBookings,
+  getUserAllocation,
   getAssetBookings,
   getBookingById,
   createBooking,
   updateBooking,
-  cancelBooking
+  cancelBooking,
+  getAssetAvailability
 }; 

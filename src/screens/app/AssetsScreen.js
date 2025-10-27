@@ -6,7 +6,8 @@ import {
   FlatList, 
   TouchableOpacity, 
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Image
 } from 'react-native';
 import { Card, Title, Paragraph, Searchbar, Chip } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -70,34 +71,62 @@ const AssetsScreen = ({ navigation }) => {
     }
   };
 
+  // Get asset thumbnail image
+  const getAssetThumbnail = (asset) => {
+    if (asset?.photos && asset.photos.length > 0) {
+      const photoUrl = asset.photos[0];
+      if (photoUrl.startsWith('http')) {
+        return photoUrl;
+      } else {
+        // Construct full URL for relative paths
+        const baseUrl = 'http://192.168.0.11:3000'; // Use your backend URL
+        return `${baseUrl}${photoUrl}`;
+      }
+    }
+    
+    // Fallback to default images
+    if (asset?.type === 'boat') {
+      return 'https://images.unsplash.com/photo-1564834744159-ff0ea41ba4b9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80';
+    } else {
+      return 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80';
+    }
+  };
+
   const renderAssetItem = ({ item }) => (
     <Card 
       style={styles.card}
       onPress={() => navigation.navigate('AssetDetail', { assetId: item._id, asset: item })}
     >
-      <Card.Content>
-        <Title>{item.name}</Title>
-        <View style={styles.infoRow}>
-          <MaterialIcons name="location-on" size={16} color="#666" />
-          <Paragraph style={styles.infoText}>{item.location}</Paragraph>
+      <View style={styles.cardContent}>
+        <Image
+          source={{ uri: getAssetThumbnail(item) }}
+          style={styles.assetThumbnail}
+          resizeMode="cover"
+        />
+        <View style={styles.cardInfo}>
+          <Title>{item.name}</Title>
+          <View style={styles.infoRow}>
+            <MaterialIcons name="location-on" size={16} color="#666" />
+            <Paragraph style={styles.infoText}>{item.location}</Paragraph>
+          </View>
+          <View style={styles.infoRow}>
+            <MaterialIcons name="people" size={16} color="#666" />
+            <Paragraph style={styles.infoText}>
+              Capacity: {item.capacity || 'Not specified'}
+            </Paragraph>
+          </View>
+          <View style={styles.typeContainer}>
+            <Chip 
+              style={[
+                styles.typeChip, 
+                item.type === 'boat' ? styles.boatChip : styles.homeChip
+              ]}
+            >
+              {item.type === 'boat' ? 'Boat' : 'Home'}
+            </Chip>
+          </View>
         </View>
-        <View style={styles.infoRow}>
-          <MaterialIcons name="people" size={16} color="#666" />
-          <Paragraph style={styles.infoText}>
-            Capacity: {item.capacity || 'Not specified'}
-          </Paragraph>
-        </View>
-        <View style={styles.typeContainer}>
-          <Chip 
-            style={[
-              styles.typeChip, 
-              item.type === 'boat' ? styles.boatChip : styles.homeChip
-            ]}
-          >
-            {item.type === 'boat' ? 'Boat' : 'Home'}
-          </Chip>
-        </View>
-      </Card.Content>
+      </View>
     </Card>
   );
 
@@ -215,6 +244,21 @@ const styles = StyleSheet.create({
   card: {
     marginBottom: 15,
     elevation: 2,
+  },
+  cardContent: {
+    flexDirection: 'row',
+    padding: 0,
+  },
+  assetThumbnail: {
+    width: 120,
+    height: 120,
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 4,
+  },
+  cardInfo: {
+    flex: 1,
+    padding: 16,
+    justifyContent: 'space-between',
   },
   infoRow: {
     flexDirection: 'row',
