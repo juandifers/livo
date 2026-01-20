@@ -124,6 +124,15 @@ const BookingsScreen = ({ navigation }) => {
       return null; // Skip rendering this item if asset is null
     }
     
+    // Derive cancelled short-term penalty info
+    const isCancelled = item.status === 'cancelled';
+    const isShortTermCancelled = isCancelled && item.shortTermCancelled;
+    const originalDays = item.originalDays ?? (Math.ceil((new Date(item.endDate) - new Date(item.startDate)) / (1000 * 60 * 60 * 24)) + 1);
+    const rebookedDays = item.rebookedDays || 0;
+    const remainingPenaltyDays = isShortTermCancelled
+      ? (item.remainingPenaltyDays != null ? item.remainingPenaltyDays : Math.max(0, originalDays - rebookedDays))
+      : 0;
+
     return (
       <TouchableOpacity 
         style={styles.bookingCard}
@@ -149,6 +158,19 @@ const BookingsScreen = ({ navigation }) => {
               <Text style={styles.bookingTypeLabel}>Booking Type</Text>
               <Text style={styles.bookingType}>{item.bookingType || 'Short'}</Text>
             </View>
+
+            {activeTab === 'cancelled' && (
+              <View style={styles.cancelledInfoContainer}>
+                {isShortTermCancelled ? (
+                  <Text style={styles.cancelledInfoText}>
+                    {remainingPenaltyDays > 0 ? `${remainingPenaltyDays} day${remainingPenaltyDays === 1 ? '' : 's'} deducted` : 'No days deducted'}
+                    {rebookedDays > 0 ? ` • ${rebookedDays} rebooked` : ''}
+                  </Text>
+                ) : (
+                  <Text style={styles.cancelledInfoText}>No days deducted</Text>
+                )}
+              </View>
+            )}
           </View>
           
           {activeTab === 'upcoming' && (
@@ -400,6 +422,19 @@ const styles = StyleSheet.create({
   bookingType: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  cancelledInfoContainer: {
+    marginTop: 8,
+    backgroundColor: '#FFF5E6',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#FFE0B2'
+  },
+  cancelledInfoText: {
+    fontSize: 12,
+    color: '#8D6E63'
   },
   daysLeftContainer: {
     position: 'absolute',

@@ -33,9 +33,10 @@ export const determineBookingType = (startDate, assetType) => {
     ? BOOKING_CONSTANTS.SHORT_TERM_THRESHOLD_BOAT 
     : BOOKING_CONSTANTS.SHORT_TERM_THRESHOLD_HOME;
   
-  if (daysInAdvance < BOOKING_CONSTANTS.VERY_SHORT_TERM_THRESHOLD) {
+  // Very short-term: 7 days or less
+  if (daysInAdvance <= BOOKING_CONSTANTS.VERY_SHORT_TERM_THRESHOLD) {
     return BOOKING_TYPES.VERY_SHORT_TERM;
-  } else if (daysInAdvance < shortTermThreshold) {
+  } else if (daysInAdvance <= shortTermThreshold) {
     return BOOKING_TYPES.SHORT_TERM;
   } else {
     return BOOKING_TYPES.REGULAR;
@@ -138,36 +139,40 @@ export const validateGapRules = (startDate, endDate, existingBookings, bookingTy
       return;
     }
     
-    // Check gap before existing booking (exclusive in-between days)
+    // Check gap before existing booking (only if existing booking starts AFTER the new booking ends)
     const endMidnight = new Date(endDate);
     endMidnight.setHours(0,0,0,0);
     const existingStartMidnight = new Date(bookingStart);
     existingStartMidnight.setHours(0,0,0,0);
-    const rawBefore = Math.floor((existingStartMidnight.getTime() - endMidnight.getTime()) / (1000 * 60 * 60 * 24));
-    const daysBefore = Math.max(0, rawBefore - 1);
-    if (daysBefore < existingBookingLength) {
-      gapConflicts.push({
-        type: 'before',
-        requiredGap: existingBookingLength,
-        bookingDate: bookingStart.toLocaleDateString(),
-        currentGap: daysBefore
-      });
+    if (existingStartMidnight.getTime() > endMidnight.getTime()) {
+      const rawBefore = Math.floor((existingStartMidnight.getTime() - endMidnight.getTime()) / (1000 * 60 * 60 * 24));
+      const daysBefore = Math.max(0, rawBefore - 1);
+      if (daysBefore < existingBookingLength) {
+        gapConflicts.push({
+          type: 'before',
+          requiredGap: existingBookingLength,
+          bookingDate: bookingStart.toLocaleDateString(),
+          currentGap: daysBefore
+        });
+      }
     }
     
-    // Check gap after existing booking (exclusive in-between days)
+    // Check gap after existing booking (only if existing booking ends BEFORE the new booking starts)
     const startMidnight = new Date(startDate);
     startMidnight.setHours(0,0,0,0);
     const existingEndMidnight = new Date(bookingEnd);
     existingEndMidnight.setHours(0,0,0,0);
-    const rawAfter = Math.floor((startMidnight.getTime() - existingEndMidnight.getTime()) / (1000 * 60 * 60 * 24));
-    const daysAfter = Math.max(0, rawAfter - 1);
-    if (daysAfter < existingBookingLength) {
-      gapConflicts.push({
-        type: 'after',
-        requiredGap: existingBookingLength,
-        bookingDate: bookingEnd.toLocaleDateString(),
-        currentGap: daysAfter
-      });
+    if (existingEndMidnight.getTime() < startMidnight.getTime()) {
+      const rawAfter = Math.floor((startMidnight.getTime() - existingEndMidnight.getTime()) / (1000 * 60 * 60 * 24));
+      const daysAfter = Math.max(0, rawAfter - 1);
+      if (daysAfter < existingBookingLength) {
+        gapConflicts.push({
+          type: 'after',
+          requiredGap: existingBookingLength,
+          bookingDate: bookingEnd.toLocaleDateString(),
+          currentGap: daysAfter
+        });
+      }
     }
   });
   

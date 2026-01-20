@@ -79,7 +79,7 @@ const AssetsScreen = ({ navigation }) => {
         return photoUrl;
       } else {
         // Construct full URL for relative paths
-        const baseUrl = 'http://192.168.0.11:3000'; // Use your backend URL
+        const baseUrl = 'https://livo-backend-api.vercel.app'; // Use your backend URL
         return `${baseUrl}${photoUrl}`;
       }
     }

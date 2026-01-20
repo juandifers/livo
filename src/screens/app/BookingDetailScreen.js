@@ -363,25 +363,27 @@ const BookingDetailScreen = ({ route, navigation }) => {
             </View>
           </View>
           
-          {/* Action Buttons */}
-          <View style={styles.actionButtonsContainer}>
-            <TouchableOpacity 
-              style={styles.cancelBookingButton}
-              onPress={handleCancelBooking}
-              disabled={isCancelling}
-            >
-              <Text style={styles.cancelBookingText}>
-                {isCancelling ? 'Cancelling...' : 'Cancel Booking'}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.modifyBookingButton}
-              onPress={handleModifyBooking}
-            >
-              <Text style={styles.modifyBookingText}>Modify Booking</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Action Buttons - hide when booking is cancelled */}
+          {booking.status !== 'cancelled' && (
+            <View style={styles.actionButtonsContainer}>
+              <TouchableOpacity 
+                style={styles.cancelBookingButton}
+                onPress={handleCancelBooking}
+                disabled={isCancelling}
+              >
+                <Text style={styles.cancelBookingText}>
+                  {isCancelling ? 'Cancelling...' : 'Cancel Booking'}
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.modifyBookingButton}
+                onPress={handleModifyBooking}
+              >
+                <Text style={styles.modifyBookingText}>Modify Booking</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
