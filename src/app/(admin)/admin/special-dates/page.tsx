@@ -1,6 +1,8 @@
 import { serverFetchJson } from '@/lib/api.server';
 import SpecialDatesTableClient from '@/app/(admin)/admin/special-dates/SpecialDatesTableClient';
 
+export const dynamic = 'force-dynamic';
+
 type SpecialDate = {
   _id: string;
   type: 'type1' | 'type2';

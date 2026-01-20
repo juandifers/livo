@@ -1,12 +1,12 @@
 // src/app/(auth)/login/page.tsx
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { clientFetchJson } from '@/lib/api.client';
 import { setToken } from '@/lib/auth';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const sp = useSearchParams();
   const redirect = sp.get('redirect') || '/admin';
@@ -75,5 +75,13 @@ export default function LoginPage() {
         </button>
       </form>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

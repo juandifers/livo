@@ -142,9 +142,15 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
     })();
   }, [createUserId, assetId]);
 
+  function parseDateOnly(dateStr: string) {
+    if (!dateStr) return new Date(''); // invalid date
+    // API returns YYYY-MM-DD (date-only). Parse as local midnight for consistent UI.
+    return dateStr.includes('T') ? new Date(dateStr) : new Date(`${dateStr}T00:00:00`);
+  }
+
   function eachDateBetween(startStr: string, endStr: string): string[] {
-    const a = new Date(startStr);
-    const b = new Date(endStr);
+    const a = parseDateOnly(startStr);
+    const b = parseDateOnly(endStr);
     const out: string[] = [];
     const step = new Date(a);
     while (step <= b) {
@@ -158,8 +164,8 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
     const errors: string[] = [];
     const warnings: string[] = [];
     if (!createStart || !createEnd) return { errors, warnings, days: 0, segments: [] as { start: string; end: string }[] };
-    const start = new Date(createStart);
-    const end = new Date(createEnd);
+    const start = parseDateOnly(createStart);
+    const end = parseDateOnly(createEnd);
     if (end < start) errors.push('End must be after start');
     const days = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
     const minStay = assetType === 'boat' ? 1 : 2;
@@ -173,8 +179,8 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
     // split preview for > 7 days
     const segments: { start: string; end: string }[] = [];
     if (days > 7) {
-      let cur = new Date(createStart);
-      const last = new Date(createEnd);
+      let cur = parseDateOnly(createStart);
+      const last = parseDateOnly(createEnd);
       while (cur <= last) {
         const segStart = new Date(cur);
         const segEnd = new Date(cur);
@@ -192,14 +198,14 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
     if (createUserId && ownerBookings[createUserId]) {
       const list = ownerBookings[createUserId];
       const past = list
-        .filter((b) => new Date(b.endDate) < start && b.status !== 'cancelled')
-        .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
+        .filter((b) => parseDateOnly(b.endDate) < start && b.status !== 'cancelled')
+        .sort((a, b) => parseDateOnly(b.endDate).getTime() - parseDateOnly(a.endDate).getTime());
       if (past.length > 0) {
         const last = past[0];
-        const lastLen = Math.floor((new Date(last.endDate).getTime() - new Date(last.startDate).getTime()) / 86400000) + 1;
-        const rest = Math.max(0, Math.floor((start.getTime() - new Date(last.endDate).getTime()) / 86400000) - 1);
+        const lastLen = Math.floor((parseDateOnly(last.endDate).getTime() - parseDateOnly(last.startDate).getTime()) / 86400000) + 1;
+        const rest = Math.max(0, Math.floor((start.getTime() - parseDateOnly(last.endDate).getTime()) / 86400000) - 1);
         if (rest < lastLen) {
-          errors.push(`Gap rule: must rest at least ${lastLen} day${lastLen>1?'s':''} after your last stay ending ${new Date(last.endDate).toLocaleDateString()}. You only have ${rest}.`);
+          errors.push(`Gap rule: must rest at least ${lastLen} day${lastLen>1?'s':''} after your last stay ending ${parseDateOnly(last.endDate).toLocaleDateString()}. You only have ${rest}.`);
         }
       }
     }
@@ -260,7 +266,7 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
   }, [year, month]);
 
   function addDays(dateStr: string, delta: number) {
-    const d = new Date(dateStr);
+    const d = parseDateOnly(dateStr);
     d.setDate(d.getDate() + delta);
     return formatDateString(d);
   }
@@ -384,7 +390,7 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
               if (createStart && dateStr >= createStart) {
                 const candidate = { start: createStart, end: dateStr };
                 const minStay = assetType === 'boat' ? 1 : 2;
-                const days = Math.floor((new Date(candidate.end).getTime() - new Date(candidate.start).getTime()) / 86400000) + 1;
+                const days = Math.floor((parseDateOnly(candidate.end).getTime() - parseDateOnly(candidate.start).getTime()) / 86400000) + 1;
                 if (days < minStay || days > 14) invalidAsEnd = true;
                 const range = eachDateBetween(candidate.start, candidate.end);
                 if (range.some((d0) => calendar[d0]?.bookings?.length > 0)) invalidAsEnd = true;
@@ -392,12 +398,12 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
                 if (createUserId && ownerBookings[createUserId]) {
                   const list = ownerBookings[createUserId];
                   const past = list
-                    .filter((b) => new Date(b.endDate) < new Date(createStart) && b.status !== 'cancelled')
-                    .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
+                    .filter((b) => parseDateOnly(b.endDate) < parseDateOnly(createStart) && b.status !== 'cancelled')
+                    .sort((a, b) => parseDateOnly(b.endDate).getTime() - parseDateOnly(a.endDate).getTime());
                   if (past.length > 0) {
                     const last = past[0];
-                    const lastLen = Math.floor((new Date(last.endDate).getTime() - new Date(last.startDate).getTime()) / 86400000) + 1;
-                    const rest = Math.max(0, Math.floor((new Date(createStart).getTime() - new Date(last.endDate).getTime()) / 86400000) - 1);
+                    const lastLen = Math.floor((parseDateOnly(last.endDate).getTime() - parseDateOnly(last.startDate).getTime()) / 86400000) + 1;
+                    const rest = Math.max(0, Math.floor((parseDateOnly(createStart).getTime() - parseDateOnly(last.endDate).getTime()) / 86400000) - 1);
                     if (rest < lastLen) invalidAsEnd = true;
                   }
                 }
@@ -418,7 +424,7 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
                     if (createStart && !createEnd) {
                       if (dateStr < createStart) { setCreateStart(dateStr); return; }
                       const minStay = assetType === 'boat' ? 1 : 2;
-                      const days = Math.floor((new Date(dateStr).getTime() - new Date(createStart).getTime()) / 86400000) + 1;
+                      const days = Math.floor((parseDateOnly(dateStr).getTime() - parseDateOnly(createStart).getTime()) / 86400000) + 1;
                       if (days < minStay || days > 14) return;
                       const range = eachDateBetween(createStart, dateStr);
                       if (range.some((d0) => calendar[d0]?.bookings?.length > 0)) return;
@@ -426,12 +432,12 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
                       if (createUserId && ownerBookings[createUserId]) {
                         const list = ownerBookings[createUserId];
                         const past = list
-                          .filter((b) => new Date(b.endDate) < new Date(createStart) && b.status !== 'cancelled')
-                          .sort((a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime());
+                          .filter((b) => parseDateOnly(b.endDate) < parseDateOnly(createStart) && b.status !== 'cancelled')
+                          .sort((a, b) => parseDateOnly(b.endDate).getTime() - parseDateOnly(a.endDate).getTime());
                         if (past.length > 0) {
                           const last = past[0];
-                          const lastLen = Math.floor((new Date(last.endDate).getTime() - new Date(last.startDate).getTime()) / 86400000) + 1;
-                          const rest = Math.max(0, Math.floor((new Date(createStart).getTime() - new Date(last.endDate).getTime()) / 86400000) - 1);
+                          const lastLen = Math.floor((parseDateOnly(last.endDate).getTime() - parseDateOnly(last.startDate).getTime()) / 86400000) + 1;
+                          const rest = Math.max(0, Math.floor((parseDateOnly(createStart).getTime() - parseDateOnly(last.endDate).getTime()) / 86400000) - 1);
                           if (rest < lastLen) return; // block setting end due to gap rule
                         }
                       }
@@ -596,8 +602,8 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
                     return (
                       <tr key={b._id} className="border-b">
                         <td className="p-2">{userLabel}</td>
-                        <td className="p-2">{new Date(b.startDate).toLocaleDateString()}</td>
-                        <td className="p-2">{new Date(b.endDate).toLocaleDateString()}</td>
+                        <td className="p-2">{parseDateOnly(b.startDate).toLocaleDateString()}</td>
+                        <td className="p-2">{parseDateOnly(b.endDate).toLocaleDateString()}</td>
                         <td className="p-2">{b.status}</td>
                       </tr>
                     );

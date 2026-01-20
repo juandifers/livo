@@ -50,7 +50,7 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
   const currentYear = new Date().getFullYear();
   
   // Only show years that have data available
-  const availableYears = [];
+  const availableYears: number[] = [];
   if (allocationData?.currentYear?.year) {
     availableYears.push(allocationData.currentYear.year);
   }

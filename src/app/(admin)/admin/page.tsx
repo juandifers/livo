@@ -20,9 +20,14 @@ export default async function AdminHomePage() {
     const res = await serverFetchJson<BookingsResp>('/bookings');
     const all = res?.data || [];
     const now = new Date();
+    const parseDateOnly = (dateStr: string) => {
+      if (!dateStr) return new Date(''); // invalid
+      // API returns YYYY-MM-DD (date-only). Parse as local midnight for consistent UI.
+      return dateStr.includes('T') ? new Date(dateStr) : new Date(`${dateStr}T00:00:00`);
+    };
     upcoming = all
-      .filter((b) => new Date(b.endDate) >= now && b.status !== 'cancelled')
-      .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+      .filter((b) => parseDateOnly(b.endDate) >= now && b.status !== 'cancelled')
+      .sort((a, b) => parseDateOnly(a.startDate).getTime() - parseDateOnly(b.startDate).getTime())
       .slice(0, 5);
   } catch {}
 
@@ -57,8 +62,8 @@ export default async function AdminHomePage() {
                 }
                 return (
                   <tr key={b._id} className="border-b last:border-0">
-                    <td className="p-2">{new Date(b.startDate).toLocaleDateString()}</td>
-                    <td className="p-2">{new Date(b.endDate).toLocaleDateString()}</td>
+                    <td className="p-2">{(b.startDate?.includes('T') ? new Date(b.startDate) : new Date(`${b.startDate}T00:00:00`)).toLocaleDateString()}</td>
+                    <td className="p-2">{(b.endDate?.includes('T') ? new Date(b.endDate) : new Date(`${b.endDate}T00:00:00`)).toLocaleDateString()}</td>
                     <td className="p-2">{assetLabel}</td>
                     <td className="p-2">{userLabel}</td>
                     <td className="p-2">{b.status}</td>

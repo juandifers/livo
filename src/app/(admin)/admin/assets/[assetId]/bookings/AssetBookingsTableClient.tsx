@@ -18,12 +18,18 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
 
   const now = new Date();
 
+  function parseDateOnly(dateStr: string) {
+    if (!dateStr) return new Date(''); // invalid date
+    // API returns YYYY-MM-DD (date-only). Parse as local midnight to avoid timezone shifting in UI.
+    return dateStr.includes('T') ? new Date(dateStr) : new Date(`${dateStr}T00:00:00`);
+  }
+
   const filtered = useMemo(() => {
     let list = bookings.slice();
     if (show === 'upcoming') {
-      list = list.filter((b) => new Date(b.endDate) >= now);
+      list = list.filter((b) => parseDateOnly(b.endDate) >= now);
     } else if (show === 'past') {
-      list = list.filter((b) => new Date(b.endDate) < now);
+      list = list.filter((b) => parseDateOnly(b.endDate) < now);
     }
     return list;
   }, [bookings, show, now]);
@@ -42,11 +48,11 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
         va = an.toLowerCase();
         vb = bn.toLowerCase();
       } else if (sortBy === 'start') {
-        va = new Date(a.startDate).getTime();
-        vb = new Date(b.startDate).getTime();
+        va = parseDateOnly(a.startDate).getTime();
+        vb = parseDateOnly(b.startDate).getTime();
       } else {
-        va = new Date(a.endDate).getTime();
-        vb = new Date(b.endDate).getTime();
+        va = parseDateOnly(a.endDate).getTime();
+        vb = parseDateOnly(b.endDate).getTime();
       }
       const cmp = va < vb ? -1 : va > vb ? 1 : 0;
       return dir === 'asc' ? cmp : -cmp;
@@ -105,8 +111,8 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
               return (
                 <tr key={b._id} className="border-b last:border-0">
                   <td className="p-3 font-medium text-slate-800">{userLabel}</td>
-                  <td className="p-3">{new Date(b.startDate).toLocaleDateString()}</td>
-                  <td className="p-3">{new Date(b.endDate).toLocaleDateString()}</td>
+                  <td className="p-3">{parseDateOnly(b.startDate).toLocaleDateString()}</td>
+                  <td className="p-3">{parseDateOnly(b.endDate).toLocaleDateString()}</td>
                   <td className="p-3">{b.status}</td>
                   <td className="p-3">{b.isShortTerm ? 'Yes' : 'No'}</td>
                   <td className="p-3">{b.status !== 'cancelled' ? (<CancelBookingButton bookingId={b._id} />) : (<span className="text-gray-500">—</span>)}</td>
