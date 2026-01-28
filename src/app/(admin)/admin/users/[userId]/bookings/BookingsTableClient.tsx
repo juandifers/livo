@@ -9,6 +9,12 @@ type Booking = {
   endDate: string;
   status: string;
   isShortTerm?: boolean;
+  // FEAT-ADMIN-OVR-001: Admin override fields
+  adminOverride?: boolean;
+  overrideByAdminId?: { name?: string; email?: string } | string | null;
+  overrideAt?: string;
+  overrideReasons?: string[];
+  overrideNote?: string | null;
 };
 
 type Props = {
@@ -19,6 +25,10 @@ export default function BookingsTableClient({ bookings }: Props) {
   const [show, setShow] = useState<'all' | 'upcoming' | 'past'>('all');
   const [sortBy, setSortBy] = useState<'asset' | 'start' | 'end'>('start');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
+  // FEAT-ADMIN-OVR-001: Filter for override bookings
+  const [showOnlyOverrides, setShowOnlyOverrides] = useState(false);
+  // Show more/less bookings
+  const [showAll, setShowAll] = useState(false);
 
   const now = new Date();
 
@@ -35,8 +45,12 @@ export default function BookingsTableClient({ bookings }: Props) {
     } else if (show === 'past') {
       list = list.filter((b) => parseDateOnly(b.endDate) < now);
     }
+    // FEAT-ADMIN-OVR-001: Filter for override bookings
+    if (showOnlyOverrides) {
+      list = list.filter((b) => b.adminOverride);
+    }
     return list;
-  }, [bookings, show, now]);
+  }, [bookings, show, showOnlyOverrides, now]);
 
   const sorted = useMemo(() => {
     const list = filtered.slice();
@@ -60,6 +74,10 @@ export default function BookingsTableClient({ bookings }: Props) {
     return list;
   }, [filtered, sortBy, dir]);
 
+  const displayed = useMemo(() => {
+    return showAll ? sorted : sorted.slice(0, 8);
+  }, [sorted, showAll]);
+
   function toggleSort(key: 'asset' | 'start' | 'end') {
     if (sortBy === key) setDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
@@ -70,13 +88,27 @@ export default function BookingsTableClient({ bookings }: Props) {
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-4">
-        <label className="text-sm">Show</label>
-        <select value={show} onChange={(e) => setShow(e.target.value as any)} className="border rounded-lg px-2 py-1 bg-white shadow-sm">
-          <option value="all">All</option>
-          <option value="upcoming">Upcoming</option>
-          <option value="past">Past</option>
-        </select>
+      <div className="flex items-center gap-4 mb-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <label className="text-sm">Show</label>
+          <select value={show} onChange={(e) => setShow(e.target.value as any)} className="border rounded-lg px-2 py-1 bg-white shadow-sm">
+            <option value="all">All</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="past">Past</option>
+          </select>
+        </div>
+        
+        {/* FEAT-ADMIN-OVR-001: Override filter */}
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={showOnlyOverrides}
+            onChange={(e) => setShowOnlyOverrides(e.target.checked)}
+            className="rounded"
+          />
+          <span>Show only overridden bookings</span>
+        </label>
+        
         <div className="ml-auto text-sm text-slate-500">{sorted.length} bookings</div>
       </div>
 
@@ -95,11 +127,12 @@ export default function BookingsTableClient({ bookings }: Props) {
               </th>
               <th className="text-left p-3">Status</th>
               <th className="text-left p-3">Short-term</th>
+              <th className="text-left p-3">Override</th>
               <th className="text-left p-3">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {sorted.map((b) => (
+            {displayed.map((b) => (
               <tr key={b._id} className="border-b last:border-0">
                 <td className="p-3">
                   {b.asset && typeof b.asset === 'object' && 'name' in (b.asset as any) ? (b.asset as any).name : (b.asset ? String(b.asset) : '—')}
@@ -109,6 +142,35 @@ export default function BookingsTableClient({ bookings }: Props) {
                 <td className="p-3">{b.status}</td>
                 <td className="p-3">{b.isShortTerm ? 'Yes' : 'No'}</td>
                 <td className="p-3">
+                  {/* FEAT-ADMIN-OVR-001: Override indicator */}
+                  {b.adminOverride ? (
+                    <div className="space-y-1">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                        Admin Override
+                      </span>
+                      {b.overrideReasons && b.overrideReasons.length > 0 && (
+                        <details className="text-xs text-gray-600">
+                          <summary className="cursor-pointer hover:text-orange-600">
+                            View violations ({b.overrideReasons.length})
+                          </summary>
+                          <ul className="ml-4 mt-1 space-y-0.5">
+                            {b.overrideReasons.map((r, i) => (
+                              <li key={i} className="text-gray-700">• {r}</li>
+                            ))}
+                          </ul>
+                          {b.overrideNote && (
+                            <div className="mt-2 p-2 bg-gray-50 rounded text-gray-700">
+                              <strong>Note:</strong> {b.overrideNote}
+                            </div>
+                          )}
+                        </details>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-gray-400">—</span>
+                  )}
+                </td>
+                <td className="p-3">
                   {b.status !== 'cancelled' ? (
                     <CancelBookingButton bookingId={b._id} />
                   ) : (
@@ -117,13 +179,23 @@ export default function BookingsTableClient({ bookings }: Props) {
                 </td>
               </tr>
             ))}
-            {sorted.length === 0 && (
+            {displayed.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-slate-500">No bookings</td>
+                <td colSpan={7} className="p-6 text-center text-slate-500">No bookings</td>
               </tr>
             )}
           </tbody>
         </table>
+        {sorted.length > 8 && (
+          <div className="border-t bg-slate-50 p-3 flex justify-center">
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="text-sm text-slate-600 hover:text-slate-900 font-medium underline"
+            >
+              {showAll ? `Show less (viewing all ${sorted.length})` : `Show more (${sorted.length - 8} hidden)`}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

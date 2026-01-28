@@ -367,7 +367,7 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
             {specialDates.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-slate-500">
-                  No special dates found. Click "Add Special Date" to create one.
+                  No special dates found. Click &quot;Add Special Date&quot; to create one.
                 </td>
               </tr>
             )}

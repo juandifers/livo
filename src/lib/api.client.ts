@@ -21,8 +21,23 @@ export async function clientFetchJson<T>(path: string, options: FetchJsonOptions
     headers,
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Request failed: ${res.status} ${res.statusText}`);
+    // FEAT-ADMIN-OVR-001: Parse JSON error to preserve requiresOverride field
+    try {
+      const errorJson = await res.json();
+      // If error response has requiresOverride, throw the whole object
+      if (errorJson.requiresOverride) {
+        throw errorJson;
+      }
+      // Otherwise throw with message
+      throw new Error(errorJson.error || errorJson.message || `Request failed: ${res.status}`);
+    } catch (e) {
+      // If JSON parsing fails, fall back to text
+      if ((e as any).requiresOverride) {
+        throw e; // Re-throw the parsed object
+      }
+      const text = await res.text().catch(() => '');
+      throw new Error(text || `Request failed: ${res.status} ${res.statusText}`);
+    }
   }
   return res.json() as Promise<T>;
 }

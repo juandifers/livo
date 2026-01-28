@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { serverFetchJson } from '@/lib/api.server';
 import BookingsTableClient from './BookingsTableClient';
-import CreateBookingForm from './CreateBookingForm';
 import AssetCalendarClient from '@/app/(admin)/admin/assets/[assetId]/bookings/AssetCalendarClient';
 import YearSelectorClient from './YearSelectorClient';
+import AnniversaryEditorClient from './AnniversaryEditorClient';
 
 type Booking = {
   _id: string;
@@ -59,7 +59,6 @@ export default async function UserBookingsPage({ params }: { params: Promise<{ u
         <Link href="/admin/users" className="text-blue-600 hover:underline">← Back to Users</Link>
       </div>
       <BookingsTableClient bookings={bookings} />
-      <CreateBookingForm userId={userId} />
 
       {/* Allocation by Asset (full-size cards) */}
       <div className="mt-6 space-y-6">
@@ -69,12 +68,23 @@ export default async function UserBookingsPage({ params }: { params: Promise<{ u
               <div className="flex items-center justify-between mb-4">
                 <div className="font-semibold">{asset.name || 'Asset'} Allocation Summary</div>
                 <div className="text-xs text-slate-600">
-                  Yearly allocation (January 1st - December 31st)
+                  Rolling anniversary allocation window (12 months)
                 </div>
               </div>
               
               {/* Year Selector */}
               <div className="mb-4">
+                <AnniversaryEditorClient
+                  userId={userId}
+                  assetId={asset._id}
+                  currentWindowLabel={
+                    (allocation as any)?.currentWindow?.start && (allocation as any)?.currentWindow?.end
+                      ? `${(allocation as any).currentWindow.start} → ${(allocation as any).currentWindow.end}`
+                      : (allocation as any)?.currentYear?.windowStart && (allocation as any)?.currentYear?.windowEnd
+                        ? `${(allocation as any).currentYear.windowStart} → ${(allocation as any).currentYear.windowEnd}`
+                        : undefined
+                  }
+                />
                 <YearSelectorClient 
                   userId={userId} 
                   assetId={asset._id} 

@@ -15,6 +15,8 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
   const [show, setShow] = useState<'all' | 'upcoming' | 'past'>('all');
   const [sortBy, setSortBy] = useState<'user' | 'start' | 'end'>('start');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
+  // Show more/less bookings
+  const [showAll, setShowAll] = useState(false);
 
   const now = new Date();
 
@@ -60,6 +62,10 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
     return list;
   }, [filtered, sortBy, dir]);
 
+  const displayed = useMemo(() => {
+    return showAll ? sorted : sorted.slice(0, 8);
+  }, [sorted, showAll]);
+
   function toggleSort(key: 'user' | 'start' | 'end') {
     if (sortBy === key) setDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
@@ -99,7 +105,7 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
             </tr>
           </thead>
           <tbody>
-            {sorted.map((b) => {
+            {displayed.map((b) => {
               let userLabel = '—';
               if (b.user && typeof b.user === 'object') {
                 const u = b.user as any;
@@ -119,13 +125,23 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
                 </tr>
               );
             })}
-            {sorted.length === 0 && (
+            {displayed.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-slate-500">No bookings found</td>
               </tr>
             )}
           </tbody>
         </table>
+        {sorted.length > 8 && (
+          <div className="border-t bg-slate-50 p-3 flex justify-center">
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="text-sm text-slate-600 hover:text-slate-900 font-medium underline"
+            >
+              {showAll ? `Show less (viewing all ${sorted.length})` : `Show more (${sorted.length - 8} hidden)`}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
