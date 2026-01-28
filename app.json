@@ -72,6 +72,10 @@
       }
     },
     "owner": "juandifers",
-    "sdkVersion": "54.0.0"
+    "sdkVersion": "54.0.0",
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/867d0bfa-4cb8-49d7-8959-2f8a26f3a636"
+    }
   }
 }

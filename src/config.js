@@ -34,7 +34,7 @@ export const API_CONFIG = {
 
 // Current environment - can be 'development', 'staging', or 'production'
 // Use 'development' for local backend, 'production' for deployed backend
-export const ENVIRONMENT = 'development';
+export const ENVIRONMENT = 'production';
 
 // Get the current API configuration based on environment
 export const getCurrentApiConfig = () => {
