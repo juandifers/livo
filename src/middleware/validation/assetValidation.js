@@ -181,3 +181,30 @@ exports.validateUpdateOwners = [
   
   validateRequest
 ]; 
+
+// Validation rules for updating an owner's anniversary anchor (admin only)
+exports.validateUpdateOwnerAnniversary = [
+  param('id')
+    .isMongoId()
+    .withMessage('Invalid asset ID format'),
+  param('userId')
+    .isMongoId()
+    .withMessage('Invalid user ID format'),
+  body('anniversaryDate')
+    .notEmpty()
+    .withMessage('anniversaryDate is required')
+    .custom((value) => {
+      // Accept YYYY-MM-DD and ISO strings (date-only contract; time portion ignored).
+      const dateRegex = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?)?$/;
+      if (!dateRegex.test(value)) {
+        throw new Error('anniversaryDate must be a valid date in format YYYY-MM-DD or ISO8601');
+      }
+      return true;
+    }),
+  body('note')
+    .optional()
+    .isString()
+    .withMessage('note must be a string')
+    .trim(),
+  validateRequest
+];

@@ -4,9 +4,16 @@
   "description": "A system for managing shared asset bookings",
   "main": "src/app.js",
   "scripts": {
-    "start": "node src/app.js",
-    "dev": "nodemon src/app.js",
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
     "seed": "node src/utils/seeder.js",
+    "demo-data": "node tools/setup-demo-data.js",
+    "list-users": "node tools/list-all-users.js",
+    "check-testuser1": "node tools/check-testuser1-bookings.js",
+    "create-june-bookings": "node tools/create-june-test-bookings.js",
+    "diagnose-june": "node tools/diagnose-june-booking.js",
+    "fix-june-special-dates": "node tools/fix-june-special-dates.js",
+    "sync-special-dates": "node tools/sync-all-special-dates.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

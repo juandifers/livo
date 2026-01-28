@@ -1,6 +1,36 @@
 const mongoose = require('mongoose');
 const User = require('./User');
 
+const OwnerAnniversaryHistorySchema = new mongoose.Schema(
+  {
+    // Date-only (stored as UTC midnight)
+    anniversaryDate: {
+      type: Date,
+      required: [true, 'Anniversary date is required']
+    },
+    // Date-only (stored as UTC midnight). Bookings with startDate >= effectiveFrom use this anchor.
+    effectiveFrom: {
+      type: Date,
+      required: [true, 'Effective-from date is required']
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now
+    },
+    updatedByAdminId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    note: {
+      type: String,
+      trim: true,
+      default: ''
+    }
+  },
+  { _id: false }
+);
+
 const OwnerSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
@@ -24,6 +54,11 @@ const OwnerSchema = new mongoose.Schema({
   since: {
     type: Date,
     default: Date.now
+  },
+  // Forward-only, effective-dated anniversary anchors (per user+asset)
+  anniversaryHistory: {
+    type: [OwnerAnniversaryHistorySchema],
+    default: []
   }
 });
 

@@ -1,5 +1,4 @@
 const express = require('express');
-const mongoose = require('mongoose');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
@@ -7,6 +6,7 @@ const path = require('path');
 
 // Load config
 const config = require('./config/config');
+const connectDB = require('./config/db');
 
 // Import middleware
 const { apiLimiter } = require('./middleware/rateLimit');
@@ -49,18 +49,13 @@ app.use('/api/bookings', bookingRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Static folder
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// Connect to database
-mongoose.connect(config.mongoURI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-  .then(() => console.log('MongoDB Connected'))
-  .catch(err => console.log('MongoDB Connection Error: ', err));
+// Connect to database (safe for local + serverless)
+connectDB();
 
 // Error handler middleware
 app.use((err, req, res, next) => {
@@ -69,14 +64,6 @@ app.use((err, req, res, next) => {
     success: false,
     error: 'Server Error'
   });
-});
-
-// Define port
-const PORT = config.port;
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running in ${config.env} mode on port ${PORT}`);
 });
 
 module.exports = app; 
