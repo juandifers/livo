@@ -12,8 +12,11 @@ import {
 import { Card, Title, Paragraph, Searchbar, Chip } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
 import { assetApi } from '../../api';
+import { getCurrentApiConfig } from '../../config';
 
 const AssetsScreen = ({ navigation }) => {
+  console.log('🚀 AssetsScreen LOADED');
+  
   const [assets, setAssets] = useState([]);
   const [filteredAssets, setFilteredAssets] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -22,15 +25,28 @@ const AssetsScreen = ({ navigation }) => {
   const [selectedFilter, setSelectedFilter] = useState('all');
 
   const loadAssets = async () => {
+    console.log('📡 loadAssets() called - fetching from API...');
     try {
       setIsLoading(true);
       const result = await assetApi.getAllAssets();
+      console.log('📡 API response received:', result);
       if (result.success) {
+        console.log('=== ASSETS LOADED ===');
+        console.log('Total assets:', result.data.length);
+        result.data.forEach(asset => {
+          console.log(`Asset: ${asset.name}`);
+          console.log(`  - Type: ${asset.type}`);
+          console.log(`  - Photos:`, asset.photos);
+          console.log(`  - Has photos: ${asset.photos && asset.photos.length > 0 ? 'YES' : 'NO'}`);
+        });
+        console.log('===================');
         setAssets(result.data);
         setFilteredAssets(result.data);
+      } else {
+        console.log('❌ API call failed:', result.error);
       }
     } catch (error) {
-      console.error('Error loading assets:', error);
+      console.error('❌ Error loading assets:', error);
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -75,16 +91,21 @@ const AssetsScreen = ({ navigation }) => {
   const getAssetThumbnail = (asset) => {
     if (asset?.photos && asset.photos.length > 0) {
       const photoUrl = asset.photos[0];
+      console.log('Asset:', asset.name, 'Photo URL:', photoUrl);
       if (photoUrl.startsWith('http')) {
         return photoUrl;
       } else {
         // Construct full URL for relative paths
-        const baseUrl = 'https://livo-backend-api.vercel.app'; // Use your backend URL
-        return `${baseUrl}${photoUrl}`;
+        const apiConfig = getCurrentApiConfig();
+        const baseUrl = apiConfig.baseURL.replace('/api', '');
+        const fullUrl = `${baseUrl}${photoUrl}`;
+        console.log('Constructed URL:', fullUrl);
+        return fullUrl;
       }
     }
     
     // Fallback to default images
+    console.log('Asset:', asset.name, 'No photos, using placeholder');
     if (asset?.type === 'boat') {
       return 'https://images.unsplash.com/photo-1564834744159-ff0ea41ba4b9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80';
     } else {
@@ -92,43 +113,60 @@ const AssetsScreen = ({ navigation }) => {
     }
   };
 
-  const renderAssetItem = ({ item }) => (
-    <Card 
-      style={styles.card}
-      onPress={() => navigation.navigate('AssetDetail', { assetId: item._id, asset: item })}
-    >
-      <View style={styles.cardContent}>
-        <Image
-          source={{ uri: getAssetThumbnail(item) }}
-          style={styles.assetThumbnail}
-          resizeMode="cover"
-        />
-        <View style={styles.cardInfo}>
-          <Title>{item.name}</Title>
-          <View style={styles.infoRow}>
-            <MaterialIcons name="location-on" size={16} color="#666" />
-            <Paragraph style={styles.infoText}>{item.location}</Paragraph>
-          </View>
-          <View style={styles.infoRow}>
-            <MaterialIcons name="people" size={16} color="#666" />
-            <Paragraph style={styles.infoText}>
-              Capacity: {item.capacity || 'Not specified'}
-            </Paragraph>
-          </View>
-          <View style={styles.typeContainer}>
-            <Chip 
-              style={[
-                styles.typeChip, 
-                item.type === 'boat' ? styles.boatChip : styles.homeChip
-              ]}
-            >
-              {item.type === 'boat' ? 'Boat' : 'Home'}
-            </Chip>
+  const renderAssetItem = ({ item }) => {
+    const imageUri = getAssetThumbnail(item);
+    const apiConfig = getCurrentApiConfig();
+    
+    console.log(`📸 Rendering asset: ${item.name}`);
+    console.log(`   Photos array:`, item.photos);
+    console.log(`   Image URI:`, imageUri);
+    console.log(`   Base URL:`, apiConfig.baseURL);
+
+    return (
+      <Card 
+        style={styles.card}
+        onPress={() => navigation.navigate('AssetDetail', { assetId: item._id, asset: item })}
+      >
+        <View style={styles.cardContent}>
+          <Image
+            source={{ uri: imageUri }}
+            style={styles.assetThumbnail}
+            resizeMode="cover"
+            onLoad={() => {
+              console.log('✅ Image loaded successfully for:', item.name, 'URL:', imageUri);
+            }}
+            onError={(error) => {
+              console.log('❌ Image load FAILED for:', item.name, 'URL:', imageUri);
+              console.log('Error details:', error.nativeEvent);
+            }}
+          />
+          <View style={styles.cardInfo}>
+            <Title>{item.name}</Title>
+            <View style={styles.infoRow}>
+              <MaterialIcons name="location-on" size={16} color="#666" />
+              <Paragraph style={styles.infoText}>{item.location}</Paragraph>
+            </View>
+            <View style={styles.infoRow}>
+              <MaterialIcons name="people" size={16} color="#666" />
+              <Paragraph style={styles.infoText}>
+                Capacity: {item.capacity || 'Not specified'}
+              </Paragraph>
+            </View>
+            <View style={styles.typeContainer}>
+              <Chip 
+                style={[
+                  styles.typeChip, 
+                  item.type === 'boat' ? styles.boatChip : styles.homeChip
+                ]}
+              >
+                {item.type === 'boat' ? 'Boat' : 'Home'}
+              </Chip>
+            </View>
           </View>
         </View>
-      </View>
-    </Card>
-  );
+      </Card>
+    );
+  };
 
   return (
     <View style={styles.container}>

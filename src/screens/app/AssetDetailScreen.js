@@ -28,7 +28,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
   const [isLoadingBookings, setIsLoadingBookings] = useState(true);
   const [isLoadingAllocation, setIsLoadingAllocation] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedWindowKey, setSelectedWindowKey] = useState('current'); // 'current' | 'next'
   const [showYearPicker, setShowYearPicker] = useState(false);
 
   const loadCurrentUser = async () => {
@@ -170,6 +170,33 @@ const AssetDetailScreen = ({ route, navigation }) => {
     };
   };
 
+  const getSelectedWindowData = () => {
+    if (!userAllocation) return null;
+    if (selectedWindowKey === 'next') return userAllocation.nextYear || null;
+    return userAllocation.currentYear || null;
+  };
+
+  const getWindowLabelFromAllocation = (key) => {
+    if (!userAllocation) return 'Loading…';
+
+    // Prefer top-level window ranges (backend now returns these).
+    const top =
+      key === 'next'
+        ? userAllocation?.nextWindow
+        : userAllocation?.currentWindow;
+    if (top?.start && top?.end) return `${top.start} → ${top.end}`;
+
+    // Fallback to per-window fields (kept for backwards compatibility).
+    const per = key === 'next' ? userAllocation?.nextYear : userAllocation?.currentYear;
+    if (per?.windowStart && per?.windowEnd) return `${per.windowStart} → ${per.windowEnd}`;
+
+    return 'Loading…';
+  };
+
+  const getSelectedWindowLabel = () => {
+    return getWindowLabelFromAllocation(selectedWindowKey);
+  };
+
   // Get special dates usage from real data
   const getSpecialDatesUsage = () => {
     if (userAllocation?.specialDates) {
@@ -300,12 +327,12 @@ const AssetDetailScreen = ({ route, navigation }) => {
           
           {/* Booking Summary */}
           <View style={styles.summaryContainer}>
-            {/* Year Selector */}
+            {/* Allocation Window Selector */}
             <TouchableOpacity 
               style={styles.yearSelector}
               onPress={() => setShowYearPicker(true)}
             >
-              <Text style={styles.yearSelectorText}>{selectedYear}</Text>
+              <Text style={styles.yearSelectorText}>{getSelectedWindowLabel()}</Text>
               <MaterialIcons name="arrow-drop-down" size={20} color="#666" />
             </TouchableOpacity>
             
@@ -318,12 +345,8 @@ const AssetDetailScreen = ({ route, navigation }) => {
                   <View style={styles.summaryItem}>
                     <Text style={styles.summaryValue}>
                       {(() => {
-                        if (selectedYear === userAllocation.currentYear?.year) {
-                          return userAllocation.currentYear?.daysRemaining || userAllocation.daysRemaining;
-                        } else if (selectedYear === userAllocation.nextYear?.year) {
-                          return userAllocation.nextYear?.daysRemaining || 0;
-                        }
-                        return userAllocation.allowedDaysPerYear; // Default for other years
+                        const d = getSelectedWindowData();
+                        return d?.daysRemaining ?? userAllocation.daysRemaining ?? 0;
                       })()}
                     </Text>
                     <Text style={styles.summaryLabel}>Days Remaining</Text>
@@ -331,12 +354,8 @@ const AssetDetailScreen = ({ route, navigation }) => {
                   <View style={styles.summaryItem}>
                     <Text style={styles.summaryValue}>
                       {(() => {
-                        if (selectedYear === userAllocation.currentYear?.year) {
-                          return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
-                        } else if (selectedYear === userAllocation.nextYear?.year) {
-                          return userAllocation.nextYear?.daysBooked || 0;
-                        }
-                        return 0; // Default for other years
+                        const d = getSelectedWindowData();
+                        return d?.daysBooked ?? userAllocation.daysBooked ?? 0;
                       })()}
                     </Text>
                     <Text style={styles.summaryLabel}>Booked</Text>
@@ -356,23 +375,15 @@ const AssetDetailScreen = ({ route, navigation }) => {
                         { 
                           width: `${(() => {
                             const daysBooked = (() => {
-                              if (selectedYear === userAllocation.currentYear?.year) {
-                                return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
-                              } else if (selectedYear === userAllocation.nextYear?.year) {
-                                return userAllocation.nextYear?.daysBooked || 0;
-                              }
-                              return 0;
+                              const d = getSelectedWindowData();
+                              return d?.daysBooked ?? userAllocation.daysBooked ?? 0;
                             })();
                             return (daysBooked / userAllocation.allowedDaysPerYear) * 100;
                           })()}%`,
                           backgroundColor: (() => {
                             const daysBooked = (() => {
-                              if (selectedYear === userAllocation.currentYear?.year) {
-                                return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
-                              } else if (selectedYear === userAllocation.nextYear?.year) {
-                                return userAllocation.nextYear?.daysBooked || 0;
-                              }
-                              return 0;
+                              const d = getSelectedWindowData();
+                              return d?.daysBooked ?? userAllocation.daysBooked ?? 0;
                             })();
                             return daysBooked > userAllocation.allowedDaysPerYear * 0.8 ? '#ff6b6b' : '#1E4640';
                           })()
@@ -383,15 +394,11 @@ const AssetDetailScreen = ({ route, navigation }) => {
                   <Text style={styles.progressText}>
                     {(() => {
                       const daysBooked = (() => {
-                        if (selectedYear === userAllocation.currentYear?.year) {
-                          return userAllocation.currentYear?.daysBooked || userAllocation.daysBooked;
-                        } else if (selectedYear === userAllocation.nextYear?.year) {
-                          return userAllocation.nextYear?.daysBooked || 0;
-                        }
-                        return 0;
+                        const d = getSelectedWindowData();
+                        return d?.daysBooked ?? userAllocation.daysBooked ?? 0;
                       })();
                       return Math.round((daysBooked / userAllocation.allowedDaysPerYear) * 100);
-                    })()}% of {selectedYear} allocation used
+                    })()}% of this window allocation used
                   </Text>
                 </View>
 
@@ -462,17 +469,20 @@ const AssetDetailScreen = ({ route, navigation }) => {
                   </View>
                 )}
 
-                {/* Active Bookings */}
+                {/* Active Bookings - FEAT-ACTIVE-001: Use universal counter */}
                 <View style={styles.activeBookingsContainer}>
                   <Text style={styles.activeBookingsTitle}>Active Bookings</Text>
                   <Text style={styles.activeBookingsCount}>
                     {(() => {
-                      if (selectedYear === userAllocation.currentYear?.year) {
-                        return `${userAllocation.currentYearActiveBookings || 0} of ${userAllocation.maxActiveBookings} slots used`;
-                      } else if (selectedYear === userAllocation.nextYear?.year) {
-                        return `${userAllocation.nextYearActiveBookings || 0} of ${userAllocation.maxActiveBookings} slots used`;
-                      }
-                      return `${userAllocation.activeBookings || 0} of ${userAllocation.maxActiveBookings} slots used`;
+                      // Use universal counter fields (activeBookingsUsed) if available
+                      // Fall back to legacy field (activeBookings) for backward compatibility
+                      const used = userAllocation.activeBookingsUsed !== undefined 
+                        ? userAllocation.activeBookingsUsed 
+                        : (userAllocation.activeBookings || 0);
+                      const total = userAllocation.activeBookingsUsed !== undefined
+                        ? used + (userAllocation.activeBookingsRemaining || 0)
+                        : userAllocation.maxActiveBookings;
+                      return `${used} of ${total} slots used`;
                     })()}
                   </Text>
                 </View>
@@ -502,7 +512,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Year</Text>
+              <Text style={styles.modalTitle}>Select Allocation Window</Text>
               <TouchableOpacity 
                 style={styles.closeButton}
                 onPress={() => setShowYearPicker(false)}
@@ -513,31 +523,31 @@ const AssetDetailScreen = ({ route, navigation }) => {
             
             <ScrollView style={styles.yearList}>
               {(() => {
-                const currentYear = new Date().getFullYear();
-                const years = [];
-                // Show current year, next year, and previous year
-                for (let year = currentYear - 1; year <= currentYear + 1; year++) {
-                  years.push(year);
-                }
-                return years.map(year => (
+                // Always present both windows; labels always derived from allocation (or "Loading…").
+                const options = [
+                  { key: 'current', label: getWindowLabelFromAllocation('current') },
+                  { key: 'next', label: getWindowLabelFromAllocation('next') },
+                ];
+
+                return options.map(({ key, label }) => (
                   <TouchableOpacity
-                    key={year}
+                    key={key}
                     style={[
                       styles.yearOption,
-                      selectedYear === year && styles.selectedYearOption
+                      selectedWindowKey === key && styles.selectedYearOption
                     ]}
                     onPress={() => {
-                      setSelectedYear(year);
+                      setSelectedWindowKey(key);
                       setShowYearPicker(false);
                     }}
                   >
                     <Text style={[
                       styles.yearOptionText,
-                      selectedYear === year && styles.selectedYearOptionText
+                      selectedWindowKey === key && styles.selectedYearOptionText
                     ]}>
-                      {year}
+                      {label}
                     </Text>
-                    {selectedYear === year && (
+                    {selectedWindowKey === key && (
                       <MaterialIcons name="check" size={20} color="#007AFF" />
                     )}
                   </TouchableOpacity>

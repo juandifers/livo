@@ -16,6 +16,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { assetApi } from '../../api';
+import { getCurrentApiConfig } from '../../config';
 
 // Get screen width
 const { width } = Dimensions.get('window');
@@ -59,8 +60,23 @@ const HomeScreen = ({ navigation }) => {
     loadData();
   };
 
-  // Mock image URLs for assets (in a real app, these would come from the backend)
+  // Get asset image from uploaded photos or fallback to placeholder
   const getAssetImage = (asset) => {
+    // Check if asset has uploaded photos
+    if (asset?.photos && asset.photos.length > 0) {
+      const photoUrl = asset.photos[0];
+      // Handle both relative and absolute URLs
+      if (photoUrl.startsWith('http')) {
+        return photoUrl;
+      } else {
+        // Construct full URL for relative paths
+        const apiConfig = getCurrentApiConfig();
+        const baseUrl = apiConfig.baseURL.replace('/api', '');
+        return `${baseUrl}${photoUrl}`;
+      }
+    }
+    
+    // Fallback to placeholder images based on type
     if (asset.type === 'boat') {
       return 'https://images.unsplash.com/photo-1564834744159-ff0ea41ba4b9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=500&q=80';
     } else {

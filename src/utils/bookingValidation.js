@@ -59,9 +59,19 @@ export const validateBookingDates = (startDate, endDate, assetType, bookingType,
     return { isValid: false, errors };
   }
   
-  if (isBefore(parsedEndDate, parsedStartDate) || isSameDay(parsedStartDate, parsedEndDate)) {
-    errors.push('End date must be after start date');
+  // End date must be >= start date (same day allowed for boats)
+  if (isBefore(parsedEndDate, parsedStartDate)) {
+    errors.push('End date must be on or after start date');
     return { isValid: false, errors };
+  }
+  
+  // For same-day bookings, check minimum stay rules by asset type
+  if (isSameDay(parsedStartDate, parsedEndDate)) {
+    const minStay = assetType === 'boat' ? 1 : 2;
+    if (minStay > 1) {
+      errors.push('End date must be after start date for homes (minimum 2 days)');
+      return { isValid: false, errors };
+    }
   }
   
   const today = new Date();
