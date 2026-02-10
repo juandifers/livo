@@ -5,6 +5,8 @@ const {
   accountSetup,
   forgotPassword,
   resetPassword,
+  changePassword,
+  adminResetUserPassword,
   getMe,
   logout
 } = require('../controllers/authController');
@@ -14,7 +16,9 @@ const {
   validateCreateUser,
   validateAccountSetup,
   validateForgotPassword,
-  validateResetPassword
+  validateResetPassword,
+  validateChangePassword,
+  validateUserIdParam
 } = require('../middleware/validation/userValidation');
 
 const { protect, authorize } = require('../middleware/auth');
@@ -31,8 +35,10 @@ router.put('/reset-password/:token', validateResetPassword, resetPassword);
 // Protected routes
 router.get('/me', protect, getMe);
 router.get('/logout', protect, logout);
+router.put('/change-password', protect, validateChangePassword, changePassword);
 
 // Admin routes
 router.post('/users', protect, authorize('admin'), validateCreateUser, createUser);
+router.post('/users/:userId/reset-password', protect, authorize('admin'), validateUserIdParam, adminResetUserPassword);
 
 module.exports = router; 

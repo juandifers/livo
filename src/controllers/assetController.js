@@ -2,6 +2,7 @@ const Asset = require('../models/Asset');
 const User = require('../models/User');
 const { handleNullOwners } = require('../utils/assetUtils');
 const DateUtils = require('../utils/dateUtils');
+const { isCloudinaryConfigured, uploadBuffer } = require('../config/cloudinary');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -674,8 +675,9 @@ exports.updateOwners = async (req, res) => {
   }
 };
 
-// Configure multer for photo uploads
-const storage = multer.diskStorage({
+// Multer: memory storage for Cloudinary (production), disk for local dev fallback
+const memStorage = multer.memoryStorage();
+const diskStorageConfig = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = path.join(__dirname, '../../uploads/assets');
     if (!fs.existsSync(uploadPath)) {
@@ -690,7 +692,7 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({
-  storage: storage,
+  storage: isCloudinaryConfigured ? memStorage : diskStorageConfig,
   limits: {
     fileSize: 5 * 1024 * 1024 // 5MB limit
   },
@@ -736,10 +738,19 @@ exports.uploadPhotos = async (req, res) => {
       }
 
       try {
-        // Generate URLs for the uploaded photos
-        const photoUrls = req.files.map(file => {
-          return `/uploads/assets/${file.filename}`;
-        });
+        let photoUrls;
+
+        if (isCloudinaryConfigured) {
+          // Upload buffers to Cloudinary and collect secure URLs
+          photoUrls = [];
+          for (const file of req.files) {
+            const { secure_url } = await uploadBuffer(file.buffer, file.mimetype, 'livo-assets');
+            photoUrls.push(secure_url);
+          }
+        } else {
+          // Local disk: use relative paths (served by express.static)
+          photoUrls = req.files.map(file => `/uploads/assets/${file.filename}`);
+        }
 
         // Update asset with new photo URLs
         const updatedAsset = await Asset.findByIdAndUpdate(
@@ -757,13 +768,15 @@ exports.uploadPhotos = async (req, res) => {
           }
         });
       } catch (updateErr) {
-        // Clean up uploaded files if database update fails
-        req.files.forEach(file => {
-          const filePath = path.join(__dirname, '../../uploads/assets', file.filename);
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
-        });
+        // Clean up local files only when using disk storage
+        if (!isCloudinaryConfigured && req.files) {
+          req.files.forEach(file => {
+            const filePath = path.join(__dirname, '../../uploads/assets', file.filename);
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+          });
+        }
 
         res.status(500).json({
           success: false,

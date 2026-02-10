@@ -21,8 +21,13 @@ const isSmtpConfigured = config.email.host && config.email.username && config.em
 const sendEmail = async (options) => {
   // If in testing mode or SMTP not configured, log email instead of sending
   if (isTesting || !isSmtpConfigured) {
-    console.log('Mock email service active (not sending real emails)');
-    console.log('SMTP Status:', isSmtpConfigured ? 'Configured' : 'Not configured');
+    console.log('[Email] Mock mode: not sending real emails.');
+    if (process.env.MOCK_EMAIL === 'true') {
+      console.log('[Email] To send real emails, set MOCK_EMAIL=false in .env (or remove MOCK_EMAIL).');
+    } else if (!isSmtpConfigured) {
+      console.log('[Email] To send real emails, set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD in .env');
+    }
+    console.log('SMTP configured:', !!isSmtpConfigured, '| Recipient:', options.email);
     console.log('-------------------------------------------------');
     console.log(`To: ${options.email}`);
     console.log(`Subject: ${options.subject}`);

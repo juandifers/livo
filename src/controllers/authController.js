@@ -272,6 +272,94 @@ exports.resetPassword = async (req, res) => {
   }
 };
 
+// @desc    Admin: send password reset email for a user
+// @route   POST /api/auth/users/:userId/reset-password
+// @access  Private/Admin
+exports.adminResetUserPassword = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    const resetToken = user.getResetPasswordToken();
+    await user.save({ validateBeforeSave: false });
+
+    const resetUrl = `${config.baseUrl}/reset-password/${resetToken}`;
+    const emailTemplate = getPasswordResetTemplate(resetUrl, `${user.name} ${user.lastName}`);
+
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: 'Password Reset Request - Livo',
+        message: emailTemplate.text,
+        html: emailTemplate.html
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: { message: 'Password reset email sent', email: user.email }
+      });
+    } catch (emailErr) {
+      console.error(emailErr);
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpire = undefined;
+      await user.save({ validateBeforeSave: false });
+      return res.status(500).json({
+        success: false,
+        error: 'Email could not be sent'
+      });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      success: false,
+      error: 'Server error'
+    });
+  }
+};
+
+// @desc    Change password (authenticated user)
+// @route   PUT /api/auth/change-password
+// @access  Private
+exports.changePassword = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('+password');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        error: 'Current password is incorrect'
+      });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      data: { message: 'Password updated successfully' }
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: 'Server error'
+    });
+  }
+};
+
 // @desc    Get current logged in user
 // @route   GET /api/auth/me
 // @access  Private
