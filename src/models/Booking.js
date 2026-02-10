@@ -103,6 +103,28 @@ const BookingSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  // Fields for admin override tracking (FEAT-ADMIN-OVR-001)
+  adminOverride: {
+    type: Boolean,
+    default: false
+  },
+  overrideByAdminId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  overrideAt: {
+    type: Date,
+    default: null
+  },
+  overrideReasons: {
+    type: [String],
+    default: []
+  },
+  overrideNote: {
+    type: String,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -114,6 +136,21 @@ BookingSchema.virtual('durationDays').get(function() {
   // Add 1 to include both start and end dates
   return Math.ceil((this.endDate - this.startDate) / (1000 * 60 * 60 * 24)) + 1;
 });
+
+// Virtual field for booking type based on flags
+BookingSchema.virtual('bookingType').get(function() {
+  if (this.isVeryShortTerm) {
+    return 'Very Short Term';
+  } else if (this.isShortTerm) {
+    return 'Short Term';
+  } else {
+    return 'Long Term';
+  }
+});
+
+// Ensure virtuals are included in JSON/Object output
+BookingSchema.set('toJSON', { virtuals: true });
+BookingSchema.set('toObject', { virtuals: true });
 
 // Validation to ensure endDate is after startDate
 BookingSchema.pre('validate', function(next) {
@@ -158,8 +195,23 @@ BookingSchema.pre('validate', async function(next) {
 
     const totalDays = Math.ceil((this.endDate - this.startDate) / (1000 * 60 * 60 * 24)) + 1; //TODO: remove +1 if this is not correct
 
+    // Debug logging for 1-day bookings
+    console.log('🔍 Booking validation - Duration check:', {
+      assetType: asset.type,
+      startDate: this.startDate,
+      endDate: this.endDate,
+      diff: this.endDate - this.startDate,
+      totalDays: totalDays,
+      minStay: asset.type === 'boat' ? 1 : 2
+    });
+
     const minStay = asset.type === 'boat' ? 1 : 2;
     if (totalDays < minStay) {
+      console.error('❌ Booking rejected - minimum stay violation:', {
+        totalDays,
+        minStay,
+        assetType: asset.type
+      });
       return next(new Error(`Minimum stay for ${asset.type} is ${minStay} day${minStay > 1 ? 's' : ''}`));
     }
 
@@ -168,8 +220,10 @@ BookingSchema.pre('validate', async function(next) {
       return next(new Error(`A continuous stay cannot exceed ${maxStay} days`));
     }
 
+    console.log('✅ Booking validation passed - total days:', totalDays);
     return next();
   } catch (err) {
+    console.error('❌ Booking validation error:', err);
     return next(err);
   }
 });
@@ -181,5 +235,6 @@ BookingSchema.index({ specialDateType: 1, year: 1 });
 BookingSchema.index({ shortTermCancelled: 1, status: 1 });
 BookingSchema.index({ isExtraDays: 1 });
 BookingSchema.index({ isShortTerm: 1, isVeryShortTerm: 1 });
+BookingSchema.index({ adminOverride: 1 });
 
 module.exports = mongoose.model('Booking', BookingSchema); 

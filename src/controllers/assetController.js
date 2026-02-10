@@ -1,6 +1,7 @@
 const Asset = require('../models/Asset');
 const User = require('../models/User');
 const { handleNullOwners } = require('../utils/assetUtils');
+const DateUtils = require('../utils/dateUtils');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -491,6 +492,54 @@ exports.removeOwner = async (req, res) => {
       success: false,
       error: 'Server Error'
     });
+  }
+};
+
+// @desc    Update a user's anniversary anchor for an asset (forward-only)
+// @route   PATCH /api/assets/:id/owners/:userId/anniversary
+// @access  Private (Admin only)
+exports.updateOwnerAnniversary = async (req, res) => {
+  try {
+    const { id, userId } = req.params;
+    const { anniversaryDate, note } = req.body;
+
+    const asset = await Asset.findById(id);
+    if (!asset) {
+      return res.status(404).json({ success: false, error: 'Asset not found' });
+    }
+
+    const owner = asset.owners.find((o) => o.user && o.user.toString() === userId.toString());
+    if (!owner) {
+      return res.status(404).json({ success: false, error: 'Owner not found in this asset' });
+    }
+
+    const today = DateUtils.parseApiDate(DateUtils.normalize(new Date()));
+    const anniv = DateUtils.parseApiDate(anniversaryDate);
+
+    if (!owner.anniversaryHistory) owner.anniversaryHistory = [];
+
+    owner.anniversaryHistory.push({
+      anniversaryDate: anniv,
+      effectiveFrom: today,
+      updatedAt: new Date(),
+      updatedByAdminId: req.user?.id || null,
+      note: (note || '').toString()
+    });
+
+    await asset.save();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        assetId: asset._id,
+        ownerUserId: userId,
+        effectiveFrom: DateUtils.formatForApi(today),
+        anniversaryDate: DateUtils.formatForApi(anniv),
+        note: (note || '').toString()
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: 'Server Error: ' + err.message });
   }
 };
 

@@ -5,6 +5,18 @@
 
 class DateUtils {
   /**
+   * Format a Date instance as YYYY-MM-DD using UTC components (timezone-safe).
+   * @param {Date} date
+   * @returns {string}
+   */
+  static formatUtcDateOnly(date) {
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+      throw new Error('Invalid Date provided');
+    }
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+  }
+
+  /**
    * Normalize any date input to YYYY-MM-DD format
    * @param {Date|string|null} input - Date object, ISO string, or YYYY-MM-DD string
    * @returns {string|null} - Normalized date string in YYYY-MM-DD format
@@ -12,33 +24,35 @@ class DateUtils {
   static normalize(input) {
     if (!input) return null;
     
-    let date;
-    
     try {
+      // Date instance: format using UTC getters to avoid server timezone affecting date-only output.
       if (input instanceof Date) {
-        date = input;
-      } else if (typeof input === 'string') {
-        // Handle ISO format (2026-02-20T23:00:00.000Z)
-        if (input.includes('T')) {
-          date = new Date(input.split('T')[0] + 'T00:00:00');
-        } 
-        // Handle YYYY-MM-DD format
-        else if (/^\d{4}-\d{2}-\d{2}$/.test(input)) {
-          date = new Date(input + 'T00:00:00');
-        }
-        // Try to parse as-is
-        else {
-          date = new Date(input);
-        }
-      } else {
-        throw new Error(`Invalid date input type: ${typeof input}`);
+        return DateUtils.formatUtcDateOnly(input);
       }
-      
-      if (isNaN(date.getTime())) {
+
+      if (typeof input === 'string') {
+        // If we already have YYYY-MM-DD, keep it (date-only contract).
+        if (/^\d{4}-\d{2}-\d{2}$/.test(input)) {
+          return input;
+        }
+
+        // ISO strings: prefer the date-part directly (timezone-safe).
+        if (input.includes('T')) {
+          const datePart = input.split('T')[0];
+          if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+            return datePart;
+        }
+        }
+
+        // Fallback: parse as Date and format in UTC.
+        const parsed = new Date(input);
+        if (isNaN(parsed.getTime())) {
         throw new Error(`Invalid date: ${input}`);
       }
-      
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        return DateUtils.formatUtcDateOnly(parsed);
+      }
+
+      throw new Error(`Invalid date input type: ${typeof input}`);
     } catch (error) {
       throw new Error(`Date normalization failed for input "${input}": ${error.message}`);
     }
@@ -128,8 +142,9 @@ class DateUtils {
    * @returns {Object} - Object with start and end dates
    */
   static getYearRange(year) {
-    const startDate = new Date(year, 0, 1); // January 1st
-    const endDate = new Date(year, 11, 31); // December 31st
+    // Use UTC dates to match how booking/special dates are stored (UTC midnight).
+    const startDate = new Date(Date.UTC(year, 0, 1)); // Jan 1 UTC
+    const endDate = new Date(Date.UTC(year, 11, 31)); // Dec 31 UTC
     
     return {
       start: startDate,
@@ -244,6 +259,63 @@ class DateUtils {
     return {
       currentYear: DateUtils.getYearRange(targetYear),
       nextYear: DateUtils.getYearRange(targetYear + 1)
+    };
+  }
+
+  /**
+   * Compute rolling 12-month windows anchored to an "anniversary date" (month/day).
+   * Date-only semantics: all returned Dates are UTC midnight (timezone-safe).
+   *
+   * @param {Date|string} anchorDate - Date whose month/day define the anniversary anchor
+   * @param {Date|string} refDate - Reference date (defaults to now)
+   * @returns {{
+   *   currentWindow: { start: Date, end: Date, startStr: string, endStr: string },
+   *   nextWindow: { start: Date, end: Date, startStr: string, endStr: string }
+   * }}
+   */
+  static getRollingAnniversaryWindows(anchorDate, refDate = new Date()) {
+    const anchor = DateUtils.parseApiDate(anchorDate);
+    // Normalize reference to date-only UTC midnight to avoid time-of-day ambiguity.
+    const ref = DateUtils.parseApiDate(DateUtils.normalize(refDate));
+
+    const anchorMonth = anchor.getUTCMonth(); // 0-based
+    const anchorDay = anchor.getUTCDate(); // 1-based
+
+    const clampMonthDayUtc = (year, month, day) => {
+      // Attempt to construct requested month/day.
+      const candidate = new Date(Date.UTC(year, month, day));
+      // If JS rolled into the next month (e.g. Feb 29 on non-leap year), clamp to last day of month.
+      if (candidate.getUTCMonth() !== month) {
+        return new Date(Date.UTC(year, month + 1, 0));
+      }
+      return candidate;
+    };
+
+    const refYear = ref.getUTCFullYear();
+    let windowStart = clampMonthDayUtc(refYear, anchorMonth, anchorDay);
+    if (windowStart.getTime() > ref.getTime()) {
+      windowStart = clampMonthDayUtc(refYear - 1, anchorMonth, anchorDay);
+    }
+
+    const startYear = windowStart.getUTCFullYear();
+    const windowEnd = clampMonthDayUtc(startYear + 1, anchorMonth, anchorDay);
+
+    const nextStart = windowEnd;
+    const nextEnd = clampMonthDayUtc(startYear + 2, anchorMonth, anchorDay);
+
+    return {
+      currentWindow: {
+        start: windowStart,
+        end: windowEnd,
+        startStr: DateUtils.normalize(windowStart),
+        endStr: DateUtils.normalize(windowEnd)
+      },
+      nextWindow: {
+        start: nextStart,
+        end: nextEnd,
+        startStr: DateUtils.normalize(nextStart),
+        endStr: DateUtils.normalize(nextEnd)
+      }
     };
   }
 }

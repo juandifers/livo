@@ -8,6 +8,7 @@ const {
   addOwner,
   removeOwner,
   updateOwners,
+  updateOwnerAnniversary,
   uploadPhotos
 } = require('../controllers/assetController');
 
@@ -18,7 +19,8 @@ const {
   validateDeleteAsset,
   validateAddOwner,
   validateRemoveOwner,
-  validateUpdateOwners
+  validateUpdateOwners,
+  validateUpdateOwnerAnniversary
 } = require('../middleware/validation/assetValidation');
 
 const { protect, authorize } = require('../middleware/auth');
@@ -40,6 +42,7 @@ router.delete('/:id', authorize('admin'), validateDeleteAsset, deleteAsset);
 // Owner management (admin only)
 router.post('/:id/owners', authorize('admin'), validateAddOwner, addOwner);
 router.put('/:id/owners', authorize('admin'), validateUpdateOwners, updateOwners);
+router.patch('/:id/owners/:userId/anniversary', authorize('admin'), validateUpdateOwnerAnniversary, updateOwnerAnniversary);
 router.delete('/:id/owners/:userId', authorize('admin'), validateRemoveOwner, removeOwner);
 
 // Photo upload (admin only)

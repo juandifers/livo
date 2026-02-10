@@ -12,7 +12,10 @@ const {
   getAllSpecialDates,
   createSpecialDates,
   deleteSpecialDate,
-  processExtraDaysPayment
+  processExtraDaysPayment,
+  getBlockedDates,
+  createBlockedDate,
+  deleteBlockedDate
 } = require('../controllers/bookingController');
 
 const {
@@ -47,6 +50,11 @@ router.get('/special-dates/all', authorize('admin'), getAllSpecialDates);
 router.get('/special-dates/:assetId', validateGetSpecialDates, getSpecialDates);
 router.post('/special-dates', authorize('admin'), validateCreateSpecialDates, createSpecialDates);
 router.delete('/special-dates/:id', authorize('admin'), validateDeleteSpecialDate, deleteSpecialDate);
+
+// Blocked dates routes - admin only (FEAT-ADMIN-BLOCK-001)
+router.get('/blocked-dates/:assetId', authorize('admin'), getBlockedDates);
+router.post('/blocked-dates', authorize('admin'), createBlockedDate);
+router.delete('/blocked-dates/:id', authorize('admin'), deleteBlockedDate);
 
 // Payment processing
 router.post('/payment/:id', validateProcessPayment, processExtraDaysPayment);

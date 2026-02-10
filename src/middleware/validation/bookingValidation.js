@@ -52,8 +52,10 @@ exports.validateCreateBooking = [
       const startDate = new Date(req.body.startDate);
       const end = new Date(endDate);
       
-      if (end <= startDate) {
-        throw new Error('End date must be after start date');
+      // Allow same-day bookings (for boats minimum stay is 1 day)
+      // The controller will validate minimum stay based on asset type
+      if (end < startDate) {
+        throw new Error('End date must be on or after start date');
       }
       
       return true;
