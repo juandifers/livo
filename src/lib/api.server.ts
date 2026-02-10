@@ -1,7 +1,8 @@
 // src/lib/api.server.ts - server-only fetch helpers
 import { cookies } from 'next/headers';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+// Prefer env var; fallback to stable backend URL to avoid undefined BASE_URL in production
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://livo-backend-api.vercel.app/api';
 
 type FetchJsonOptions = RequestInit & { skipAuth?: boolean };
 

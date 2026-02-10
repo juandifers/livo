@@ -14,6 +14,11 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  
+  // FEAT-ADMIN-OVR-001: Admin override modal state
+  const [violations, setViolations] = useState<string[]>([]);
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideNote, setOverrideNote] = useState('');
 
   useEffect(() => {
     // Load all assets, then filter to only those the user owns
@@ -46,19 +51,65 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
         body: JSON.stringify({ userId, assetId, startDate, endDate, notes, useExtraDays }),
       });
       setMessage('Booking created');
-      // Simple reset
-      setAssetId('');
-      setStartDate('');
-      setEndDate('');
-      setNotes('');
-      setUseExtraDays(false);
-      // Refresh page data
+      resetForm();
       window.location.reload();
     } catch (e: any) {
-      setError(e?.message || 'Failed to create booking');
+      // FEAT-ADMIN-OVR-001: Check if this requires admin override
+      if (e?.requiresOverride && Array.isArray(e?.violations)) {
+        setViolations(e.violations);
+        setShowOverrideModal(true);
+      } else {
+        setError(e?.message || 'Failed to create booking');
+      }
     } finally {
       setBusy(false);
     }
+  }
+  
+  async function handleOverride() {
+    setBusy(true);
+    setError(null);
+    try {
+      await clientFetchJson(`/bookings`, {
+        method: 'POST',
+        body: JSON.stringify({
+          userId,
+          assetId,
+          startDate,
+          endDate,
+          notes,
+          useExtraDays,
+          adminOverride: true,
+          overrideNote,
+        }),
+      });
+      setMessage('Booking created with admin override');
+      setShowOverrideModal(false);
+      resetForm();
+      window.location.reload();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to create booking');
+      setShowOverrideModal(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+  
+  function resetForm() {
+    setAssetId('');
+    setStartDate('');
+    setEndDate('');
+    setNotes('');
+    setUseExtraDays(false);
+    setViolations([]);
+    setOverrideNote('');
+  }
+  
+  function handleCancelOverride() {
+    setShowOverrideModal(false);
+    setViolations([]);
+    setOverrideNote('');
+    setBusy(false);
   }
 
   return (
@@ -98,6 +149,61 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
       </button>
       {assets.length === 0 && (
         <div className="text-sm text-gray-500">This user has no owned assets.</div>
+      )}
+      
+      {/* FEAT-ADMIN-OVR-001: Admin override confirmation modal */}
+      {showOverrideModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-lg w-full mx-4">
+            <h3 className="text-lg font-semibold text-red-600 mb-4">
+              ⚠️ Booking Violates Rules
+            </h3>
+            
+            <div className="mb-4">
+              <p className="text-sm text-gray-600 mb-2">
+                This booking violates the following rules:
+              </p>
+              <ul className="space-y-1 max-h-60 overflow-y-auto">
+                {violations.map((v, i) => (
+                  <li key={i} className="text-sm text-gray-800 bg-red-50 p-2 rounded border border-red-100">
+                    • {v}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Override Note (optional)
+              </label>
+              <textarea
+                value={overrideNote}
+                onChange={(e) => setOverrideNote(e.target.value)}
+                placeholder="Reason for override..."
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                rows={3}
+              />
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleCancelOverride}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleOverride}
+                disabled={busy}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-60 font-medium"
+              >
+                {busy ? 'Creating...' : 'Proceed Anyway'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </form>
   );

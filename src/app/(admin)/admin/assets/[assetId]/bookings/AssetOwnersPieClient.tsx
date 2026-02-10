@@ -20,6 +20,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
   const [newUserLastName, setNewUserLastName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPhone, setNewUserPhone] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
   const [creatingUser, setCreatingUser] = useState(false);
 
   // Initialize editable owners when entering edit mode
@@ -141,8 +142,13 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
   };
 
   const handleCreateAndAddUser = async () => {
-    if (!newUserName || !newUserLastName || !newUserEmail || !newUserPhone) {
+    if (!newUserName || !newUserLastName || !newUserEmail || !newUserPhone || !newUserPassword) {
       setError('All fields are required to create a new user');
+      return;
+    }
+
+    if (newUserPassword.length < 6) {
+      setError('Password must be at least 6 characters long');
       return;
     }
 
@@ -150,7 +156,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
     setError(null);
 
     try {
-      // Create the user with email invitation
+      // Create the user with password
       const userRes = await clientFetchJson<{ success: boolean; data: { user: { _id: string }, message: string } }>('/auth/users', {
         method: 'POST',
         body: JSON.stringify({
@@ -158,6 +164,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
           lastName: newUserLastName,
           email: newUserEmail,
           phoneNumber: newUserPhone,
+          password: newUserPassword,
           role: 'user'
         })
       });
@@ -165,8 +172,8 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
       const newUserId = userRes.data.user._id;
       const label = `${newUserName} ${newUserLastName}`;
 
-      // Show success message about email being sent
-      alert(`User created successfully! Account setup email sent to ${newUserEmail}`);
+      // Show success message
+      alert(`User created successfully! ${newUserEmail} can now log in with the password you set.`);
 
       // Add to editable owners
       setEditableOwners([...editableOwners, { userId: newUserId, label, sharePercentage: 12.5, isNew: true }]);
@@ -184,6 +191,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
       setNewUserLastName('');
       setNewUserEmail('');
       setNewUserPhone('');
+      setNewUserPassword('');
       setShowCreateUser(false);
     } catch (err: any) {
       setError(err?.message || 'Failed to create user');
@@ -198,6 +206,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
     setNewUserLastName('');
     setNewUserEmail('');
     setNewUserPhone('');
+    setNewUserPassword('');
     setError(null);
   };
 
@@ -358,6 +367,18 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
                       />
                     </div>
 
+                    <div>
+                      <label className="text-xs text-slate-600">Password *</label>
+                      <input
+                        type="password"
+                        value={newUserPassword}
+                        onChange={(e) => setNewUserPassword(e.target.value)}
+                        className="w-full border rounded px-2 py-1.5 text-sm"
+                        placeholder="Min 6 characters"
+                        minLength={6}
+                      />
+                    </div>
+
                     <div className="flex gap-2 pt-1">
                       <button
                         onClick={handleCancelCreateUser}
@@ -368,7 +389,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
                       </button>
                       <button
                         onClick={handleCreateAndAddUser}
-                        disabled={creatingUser || !newUserName || !newUserLastName || !newUserEmail || !newUserPhone}
+                        disabled={creatingUser || !newUserName || !newUserLastName || !newUserEmail || !newUserPhone || !newUserPassword}
                         className="flex-1 text-sm px-3 py-1.5 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
                       >
                         {creatingUser ? 'Creating...' : 'Create & Add'}

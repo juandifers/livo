@@ -2,7 +2,8 @@
 'use client';
 import Cookies from 'js-cookie';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+// Prefer env var; fallback to stable backend URL to avoid undefined BASE_URL in production
+const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://livo-backend-api.vercel.app/api';
 
 type FetchJsonOptions = RequestInit & { skipAuth?: boolean };
 
@@ -15,12 +16,28 @@ export async function clientFetchJson<T>(path: string, options: FetchJsonOptions
 
   const res = await fetch(`${BASE_URL}${path}`, {
     cache: 'no-store',
+    credentials: 'include',
     ...options,
     headers,
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Request failed: ${res.status} ${res.statusText}`);
+    // FEAT-ADMIN-OVR-001: Parse JSON error to preserve requiresOverride field
+    try {
+      const errorJson = await res.json();
+      // If error response has requiresOverride, throw the whole object
+      if (errorJson.requiresOverride) {
+        throw errorJson;
+      }
+      // Otherwise throw with message
+      throw new Error(errorJson.error || errorJson.message || `Request failed: ${res.status}`);
+    } catch (e) {
+      // If JSON parsing fails, fall back to text
+      if ((e as any).requiresOverride) {
+        throw e; // Re-throw the parsed object
+      }
+      const text = await res.text().catch(() => '');
+      throw new Error(text || `Request failed: ${res.status} ${res.statusText}`);
+    }
   }
   return res.json() as Promise<T>;
 }

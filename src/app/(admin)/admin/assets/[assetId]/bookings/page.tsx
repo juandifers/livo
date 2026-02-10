@@ -5,6 +5,8 @@ import AssetCalendarClient from './AssetCalendarClient';
 import AssetOwnersPieClient from './AssetOwnersPieClient';
 import AssetBookingsTableClient from './AssetBookingsTableClient';
 import YearSelectorClient from '../../../users/[userId]/bookings/YearSelectorClient';
+import AssetOwnersAllocationClient from './AssetOwnersAllocationClient';
+import ExportButtons from './ExportButtons';
 
 type Booking = {
   _id: string;
@@ -51,7 +53,14 @@ export default async function AssetBookingsPage({ params }: { params: Promise<{ 
     <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-semibold">{assetName} Bookings</h1>
-        <Link href="/admin/assets" className="text-sm text-slate-600 hover:text-slate-900">← Back to Assets</Link>
+        <div className="flex items-center gap-4">
+          <ExportButtons 
+            bookings={bookings} 
+            owners={ownerAllocations} 
+            assetName={assetName} 
+          />
+          <Link href="/admin/assets" className="text-sm text-slate-600 hover:text-slate-900">← Back to Assets</Link>
+        </div>
       </div>
       <AssetCalendarClient assetId={assetId} />
 
@@ -63,33 +72,7 @@ export default async function AssetBookingsPage({ params }: { params: Promise<{ 
       </div>
 
       {/* Allocation by Owner */}
-      <div className="rounded-xl border bg-white shadow-sm p-4 mt-6">
-        <div className="font-semibold mb-3">Allocation by Owner</div>
-        <div className="text-xs text-slate-600 mb-4">Yearly allocation (January 1st - December 31st)</div>
-        <div className="space-y-6">
-          {ownerAllocations.map((o) => (
-            <div key={o.userId} className="rounded-lg border p-4 bg-slate-50">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <Link 
-                    href={`/admin/users/${o.userId}/bookings`}
-                    className="font-medium hover:text-slate-900 hover:underline"
-                  >
-                    {o.label}
-                  </Link>
-                  <div className="text-xs text-slate-600">Share: {o.sharePercentage}%</div>
-                </div>
-              </div>
-              
-              <YearSelectorClient 
-                userId={o.userId} 
-                assetId={assetId} 
-                allocation={o.allocation}
-              />
-            </div>
-          ))}
-        </div>
-      </div>
+      <AssetOwnersAllocationClient owners={ownerAllocations} assetId={assetId} />
     </div>
   );
 }

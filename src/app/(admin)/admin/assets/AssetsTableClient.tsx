@@ -282,7 +282,7 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
           <div className="mt-6 p-4 bg-slate-50 rounded-lg">
             <p className="text-sm text-slate-600">
               <strong>Note:</strong> The asset will be created with 0% ownership. 
-              Ownership shares can be added later as they are sold through the asset's booking page.
+              Ownership shares can be added later as they are sold through the asset&apos;s booking page.
             </p>
           </div>
 
@@ -315,6 +315,7 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
         <table className="min-w-[800px] w-full text-sm">
           <thead className="bg-slate-50 border-b">
             <tr>
+              <th className="text-left p-3">Photo</th>
               <th className="text-left p-3">Name</th>
               <th className="text-left p-3">Type</th>
               <th className="text-left p-3">Location</th>
@@ -341,8 +342,44 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
                     .join(', ')
                 : 'No owners';
 
+              const assetPhotos = (a as any).photos;
+              const firstPhoto = Array.isArray(assetPhotos) && assetPhotos.length > 0 ? assetPhotos[0] : null;
+              
+              // Construct photo URL
+              const getPhotoUrl = (photoUrl: string) => {
+                if (photoUrl.startsWith('http')) return photoUrl;
+                const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api', '') || '';
+                return `${baseUrl}${photoUrl}`;
+              };
+
+              // Placeholder images based on asset type
+              const getPlaceholderImage = (type?: string) => {
+                if (type === 'boat') {
+                  return 'https://images.unsplash.com/photo-1564834744159-ff0ea41ba4b9?w=400&h=300&fit=crop';
+                } else {
+                  return 'https://images.unsplash.com/photo-1580587771525-78b9dba3b914?w=400&h=300&fit=crop';
+                }
+              };
+
               return (
                 <tr key={a._id} className="border-b last:border-0">
+                  <td className="p-3">
+                    {firstPhoto ? (
+                      <img 
+                        src={getPhotoUrl(firstPhoto)}
+                        alt={a.name}
+                        className="w-16 h-16 object-cover rounded border"
+                        onError={(e) => {
+                          // Fallback to placeholder on error
+                          e.currentTarget.src = getPlaceholderImage(a.type);
+                        }}
+                      />
+                    ) : (
+                      <div className="w-16 h-16 bg-slate-200 rounded flex items-center justify-center text-xs text-slate-500">
+                        No photo
+                      </div>
+                    )}
+                  </td>
                   <td className="p-3 font-medium text-slate-800">{a.name}</td>
                   <td className="p-3 capitalize">{a.type || '—'}</td>
                   <td className="p-3">{a.location || '—'}</td>
@@ -357,20 +394,28 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
                     </div>
                   </td>
                   <td className="p-3">
-                    <Link
-                      href={`/admin/assets/${a._id}/bookings`}
-                      className="inline-block rounded bg-slate-900 text-white px-3 py-1.5 text-xs hover:bg-slate-800"
-                    >
-                      View bookings
-                    </Link>
+                    <div className="flex flex-col gap-2">
+                      <Link
+                        href={`/admin/assets/${a._id}/bookings`}
+                        className="inline-block rounded bg-slate-900 text-white px-3 py-1.5 text-xs hover:bg-slate-800 text-center"
+                      >
+                        View bookings
+                      </Link>
+                      <Link
+                        href={`/admin/assets/${a._id}/edit`}
+                        className="inline-block rounded border border-slate-300 text-slate-700 px-3 py-1.5 text-xs hover:bg-slate-50 text-center"
+                      >
+                        Edit
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               );
             })}
             {assets.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-6 text-center text-slate-500">
-                  No assets found. Click "Add New Asset" to create one.
+                <td colSpan={6} className="p-6 text-center text-slate-500">
+                  No assets found. Click &quot;Add New Asset&quot; to create one.
                 </td>
               </tr>
             )}
