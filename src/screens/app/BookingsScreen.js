@@ -16,6 +16,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { bookingApi } from '../../api';
 import { format } from 'date-fns';
+import { getCurrentApiConfig } from '../../config';
 
 const { width } = Dimensions.get('window');
 
@@ -58,23 +59,34 @@ const BookingsScreen = ({ navigation }) => {
     loadBookings();
   };
 
-  // Filter bookings based on active tab
+  // Filter and sort bookings based on active tab
   const getFilteredBookings = () => {
     const now = new Date();
+    let filtered = [];
     
     if (activeTab === 'upcoming') {
-      return bookings.filter(booking => 
+      filtered = bookings.filter(booking => 
         new Date(booking.endDate) >= now && booking.status !== 'cancelled'
       );
+      // Sort by start date (closest to today first)
+      filtered.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
     } else if (activeTab === 'past') {
-      return bookings.filter(booking => 
+      filtered = bookings.filter(booking => 
         new Date(booking.endDate) < now && booking.status !== 'cancelled'
       );
+      // Sort by end date (most recent first)
+      filtered.sort((a, b) => new Date(b.endDate) - new Date(a.endDate));
     } else if (activeTab === 'cancelled') {
-      return bookings.filter(booking => booking.status === 'cancelled');
+      filtered = bookings.filter(booking => booking.status === 'cancelled');
+      // Sort by cancellation date or start date (most recent first)
+      filtered.sort((a, b) => {
+        const dateA = a.cancelledAt ? new Date(a.cancelledAt) : new Date(a.startDate);
+        const dateB = b.cancelledAt ? new Date(b.cancelledAt) : new Date(b.startDate);
+        return dateB - dateA;
+      });
     }
     
-    return [];
+    return filtered;
   };
 
   // Calculate days left for booking
@@ -86,8 +98,30 @@ const BookingsScreen = ({ navigation }) => {
     return diffDays;
   };
 
-  // Get asset image (mock function for now)
+  // Get asset image - use actual photos from asset
   const getAssetImage = (asset) => {
+    // Check if asset has photos array and get the first photo
+    if (asset?.photos && Array.isArray(asset.photos) && asset.photos.length > 0) {
+      const firstPhoto = asset.photos[0];
+      
+      // Handle different photo URL formats
+      if (typeof firstPhoto === 'string') {
+        // If it's already a full URL, use it directly
+        if (firstPhoto.startsWith('http://') || firstPhoto.startsWith('https://')) {
+          return firstPhoto;
+        }
+        // If it's a relative path, construct the full URL
+        const apiConfig = getCurrentApiConfig();
+        // Remove '/api' from baseURL to get the server base URL
+        const baseUrl = apiConfig.baseURL.replace('/api', '');
+        return `${baseUrl}${firstPhoto.startsWith('/') ? '' : '/'}${firstPhoto}`;
+      } else if (typeof firstPhoto === 'object' && firstPhoto.url) {
+        // If photo is an object with a url property
+        return firstPhoto.url;
+      }
+    }
+    
+    // Fallback to placeholder images if no photos available
     if (asset?.type === 'boat') {
       return 'https://images.unsplash.com/photo-1564834744159-ff0ea41ba4b9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=500&q=80';
     } else {
@@ -124,6 +158,15 @@ const BookingsScreen = ({ navigation }) => {
       return null; // Skip rendering this item if asset is null
     }
     
+    // Derive cancelled short-term penalty info
+    const isCancelled = item.status === 'cancelled';
+    const isShortTermCancelled = isCancelled && item.shortTermCancelled;
+    const originalDays = item.originalDays ?? (Math.ceil((new Date(item.endDate) - new Date(item.startDate)) / (1000 * 60 * 60 * 24)) + 1);
+    const rebookedDays = item.rebookedDays || 0;
+    const remainingPenaltyDays = isShortTermCancelled
+      ? (item.remainingPenaltyDays != null ? item.remainingPenaltyDays : Math.max(0, originalDays - rebookedDays))
+      : 0;
+
     return (
       <TouchableOpacity 
         style={styles.bookingCard}
@@ -149,6 +192,19 @@ const BookingsScreen = ({ navigation }) => {
               <Text style={styles.bookingTypeLabel}>Booking Type</Text>
               <Text style={styles.bookingType}>{item.bookingType || 'Short'}</Text>
             </View>
+
+            {activeTab === 'cancelled' && (
+              <View style={styles.cancelledInfoContainer}>
+                {isShortTermCancelled ? (
+                  <Text style={styles.cancelledInfoText}>
+                    {remainingPenaltyDays > 0 ? `${remainingPenaltyDays} day${remainingPenaltyDays === 1 ? '' : 's'} deducted` : 'No days deducted'}
+                    {rebookedDays > 0 ? ` • ${rebookedDays} rebooked` : ''}
+                  </Text>
+                ) : (
+                  <Text style={styles.cancelledInfoText}>No days deducted</Text>
+                )}
+              </View>
+            )}
           </View>
           
           {activeTab === 'upcoming' && (
@@ -400,6 +456,19 @@ const styles = StyleSheet.create({
   bookingType: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  cancelledInfoContainer: {
+    marginTop: 8,
+    backgroundColor: '#FFF5E6',
+    borderRadius: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: '#FFE0B2'
+  },
+  cancelledInfoText: {
+    fontSize: 12,
+    color: '#8D6E63'
   },
   daysLeftContainer: {
     position: 'absolute',

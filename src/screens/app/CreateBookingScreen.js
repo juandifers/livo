@@ -207,8 +207,8 @@ const CreateBookingScreen = ({ route, navigation }) => {
       // Fetch real availability data from API
       const availabilityResult = await bookingApi.getAssetAvailability(
         asset._id,
-        startMonth.toISOString().split('T')[0], // YYYY-MM-DD format
-        endMonth.toISOString().split('T')[0]
+        DateUtils.toApiFormat(startMonth), // YYYY-MM-DD format (timezone-safe)
+        DateUtils.toApiFormat(endMonth)
       );
       
       console.log('🔍 Availability API result:', availabilityResult);
@@ -1018,8 +1018,8 @@ const CreateBookingScreen = ({ route, navigation }) => {
         assetId: asset._id,
         user: user.name || 'Unknown',
         userId: user._id,
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
+        startDate: DateUtils.toApiFormat(startDate),
+        endDate: DateUtils.toApiFormat(endDate),
         bookingType: validationResults.bookingType || 'Short'
       });
       

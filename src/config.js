@@ -6,16 +6,16 @@
  */
 
 // Backend API base URL
-export const API_BASE_URL = 'http://localhost:3000/api';
+export const API_BASE_URL = 'https://livo-backend-api.vercel.app/api';
 
-// Development mode flag - set to false when deploying to production
+// Development mode flag - set to false to use real backend API instead of mock data
 export const DEV_MODE = false;
 
 // Backend API URLs
 export const API_CONFIG = {
   // For local development with physical device
   development: {
-    baseURL: 'http://192.168.0.11:3000/api',
+    baseURL: 'http://10.22.39.64:3000/api',
     timeout: 10000
   },
   
@@ -27,13 +27,14 @@ export const API_CONFIG = {
   
   // For production environment
   production: {
-    baseURL: 'https://api.yourdomain.com/api',
+    baseURL: 'https://livo-backend-api.vercel.app/api',
     timeout: 15000
   }
 };
 
 // Current environment - can be 'development', 'staging', or 'production'
-export const ENVIRONMENT = 'development';
+// Use 'development' for local backend, 'production' for deployed backend
+export const ENVIRONMENT = 'production';
 
 // Get the current API configuration based on environment
 export const getCurrentApiConfig = () => {

@@ -39,6 +39,12 @@ const getUserAllocation = async (userId, assetId) => {
     if (DEV_MODE) {
       const currentYear = new Date().getFullYear();
       const nextYear = currentYear + 1;
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const startStr = `${yyyy}-${mm}-${dd}`;
+      const endStr = `${yyyy + 1}-${mm}-${dd}`;
       
       return { 
         success: true, 
@@ -49,9 +55,15 @@ const getUserAllocation = async (userId, assetId) => {
           maxActiveBookings: 24, // 50% ownership = 24 bookings (4 * 6)
           maxStayLength: 56, // 50% ownership = 56 days (4 * 14)
           
+          // FEAT-ACTIVE-001: Universal active bookings counter
+          activeBookingsUsed: 1,
+          activeBookingsRemaining: 23,
+          
           // Current year allocation
           currentYear: {
             year: currentYear,
+            windowStart: startStr,
+            windowEnd: endStr,
             daysBooked: 7,
             daysRemaining: 169,
             extraDaysUsed: 0,
@@ -63,6 +75,8 @@ const getUserAllocation = async (userId, assetId) => {
           // Next year allocation
           nextYear: {
             year: nextYear,
+            windowStart: endStr,
+            windowEnd: `${yyyy + 2}-${mm}-${dd}`,
             daysBooked: 0,
             daysRemaining: 176,
             extraDaysUsed: 0,
@@ -70,6 +84,10 @@ const getUserAllocation = async (userId, assetId) => {
             specialDateUsage: { type1: 0, type2: 0 },
             bookings: []
           },
+
+          // New window fields (backend now returns these)
+          currentWindow: { start: startStr, end: endStr },
+          nextWindow: { start: endStr, end: `${yyyy + 2}-${mm}-${dd}` },
           
           // Legacy fields for backward compatibility
           daysBooked: 7,
