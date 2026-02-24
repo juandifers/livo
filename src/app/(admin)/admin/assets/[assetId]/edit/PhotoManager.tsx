@@ -21,18 +21,20 @@ export default function PhotoManager({
     initialPhotos.map(url => ({ url }))
   );
   const [uploading, setUploading] = useState(false);
+  const [deletingIndex, setDeletingIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
+    const MAX_FILE_SIZE = 4 * 1024 * 1024; // Keep below Vercel request cap
     const validFiles = files.filter(file => {
       const isValidType = file.type.startsWith('image/');
-      const isValidSize = file.size <= 5 * 1024 * 1024; // 5MB
+      const isValidSize = file.size <= MAX_FILE_SIZE;
       return isValidType && isValidSize;
     });
     
     if (validFiles.length !== files.length) {
-      setError('Some files were rejected. Only images under 5MB are allowed.');
+      setError('Some files were rejected. Only images under 4MB are allowed.');
     }
     
     const newPhotos = validFiles.map(file => ({
@@ -52,32 +54,38 @@ export default function PhotoManager({
     setError(null);
     
     try {
-      const formData = new FormData();
-      filesToUpload.forEach(p => {
-        if (p.file) formData.append('photos', p.file);
-      });
-      
       // Get auth token from cookies
       const token = Cookies.get('token');
       const headers: HeadersInit = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
-      
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/assets/${assetId}/photos`,
-        { 
-          method: 'POST', 
-          body: formData,
-          credentials: 'include',
-          headers
+
+      const uploadedUrls: string[] = [];
+
+      // Upload one photo per request to stay under platform body limits.
+      for (const photo of filesToUpload) {
+        const formData = new FormData();
+        if (photo.file) formData.append('photos', photo.file);
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/assets/${assetId}/photos`,
+          {
+            method: 'POST',
+            body: formData,
+            credentials: 'include',
+            headers
+          }
+        );
+
+        if (!response.ok) {
+          const body = await response.text().catch(() => '');
+          throw new Error(body || 'Upload failed');
         }
-      );
-      
-      if (!response.ok) throw new Error('Upload failed');
-      
-      const result = await response.json();
-      const uploadedUrls = result.data.photoUrls || [];
+
+        const result = await response.json();
+        uploadedUrls.push(...(result?.data?.photoUrls || []));
+      }
       
       // Update photos state with uploaded URLs
       const updated = photos.map(p => {
@@ -104,19 +112,57 @@ export default function PhotoManager({
     }
   };
   
-  const handleRemove = (index: number) => {
+  const handleRemove = async (index: number) => {
     const photo = photos[index];
-    if (photo.preview) URL.revokeObjectURL(photo.preview);
-    setPhotos(photos.filter((_, i) => i !== index));
+    if (!photo) return;
+
+    // New/local files can be removed client-side only.
+    if (photo.preview || photo.file || !photo.url) {
+      if (photo.preview) URL.revokeObjectURL(photo.preview);
+      const updated = photos.filter((_, i) => i !== index);
+      setPhotos(updated);
+      if (onPhotosChange) onPhotosChange(updated.map(p => p.url).filter(Boolean));
+      return;
+    }
+
+    setDeletingIndex(index);
+    setError(null);
+    try {
+      const token = Cookies.get('token');
+      const headers: HeadersInit = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/assets/${assetId}/photos`,
+        {
+          method: 'DELETE',
+          credentials: 'include',
+          headers,
+          body: JSON.stringify({ photoUrl: photo.url })
+        }
+      );
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(body || 'Failed to delete photo');
+      }
+
+      const updated = photos.filter((_, i) => i !== index);
+      setPhotos(updated);
+      if (onPhotosChange) onPhotosChange(updated.map(p => p.url).filter(Boolean));
+    } catch (err: any) {
+      setError(err?.message || 'Failed to delete photo');
+    } finally {
+      setDeletingIndex(null);
+    }
   };
   
   // Construct full URL for existing photos
   const getPhotoUrl = (photo: Photo) => {
     if (photo.preview) return photo.preview;
     if (photo.url.startsWith('http')) return photo.url;
-    // Construct full URL for relative paths
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api', '') || '';
-    return `${baseUrl}${photo.url}`;
+    if (photo.url.startsWith('/')) return photo.url;
+    return `/${photo.url}`;
   };
   
   return (
@@ -164,9 +210,10 @@ export default function PhotoManager({
             />
             <button
               onClick={() => handleRemove(idx)}
+              disabled={deletingIndex === idx}
               className="absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
             >
-              ✕
+              {deletingIndex === idx ? '…' : '✕'}
             </button>
             {photo.file && (
               <div className="absolute bottom-1 left-1 bg-amber-500 text-white text-xs px-2 py-1 rounded">

@@ -449,7 +449,7 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
         </div>
       )}
 
-      {/* Selection Summary Bar */}
+      {/* Selection Summary Bar - Create Booking */}
       {createStart && !showBlockUI && (
         <div className="mb-4 p-3 bg-sky-50 border border-sky-200 rounded-lg">
           <div className="flex items-center justify-between">
@@ -465,6 +465,32 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
             </div>
             <button 
               onClick={handleClearSelection}
+              className="text-sm text-slate-600 hover:text-slate-900 underline"
+            >
+              Clear selection
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Selection Summary Bar - Block Date Range */}
+      {showBlockUI && (blockStart || blockEnd) && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4 text-sm">
+              <span>Block start: <span className="font-semibold">{blockStart || '—'}</span></span>
+              {blockEnd ? (
+                <>
+                  <span>End: <span className="font-semibold">{blockEnd}</span></span>
+                  <span>Duration: <span className="font-semibold">{blockStart && blockEnd ? Math.floor((parseDateOnly(blockEnd).getTime() - parseDateOnly(blockStart).getTime()) / 86400000) + 1 : 0} day(s)</span></span>
+                </>
+              ) : (
+                <span className="text-slate-500 italic">Click end date on calendar...</span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => { setBlockStart(null); setBlockEnd(null); setBlockError(null); setOverlapWarning(null); }}
               className="text-sm text-slate-600 hover:text-slate-900 underline"
             >
               Clear selection
@@ -510,21 +536,24 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
               if (blocked) cellBg = 'bg-red-50';
               if (!booked && !blocked) cellBg = 'bg-white';
               
-              // Selection state visualization
-              const isSelectionStart = createStart === dateStr;
-              const isSelectionEnd = createEnd === dateStr;
-              const isInSelection = !!createStart && !!createEnd && dateStr >= createStart && dateStr <= createEnd;
+              // Selection state visualization (booking vs block mode)
+              const isSelectionStart = !showBlockUI && createStart === dateStr;
+              const isSelectionEnd = !showBlockUI && createEnd === dateStr;
+              const isInSelection = !showBlockUI && !!createStart && !!createEnd && dateStr >= createStart && dateStr <= createEnd;
+              const isBlockSelectionStart = showBlockUI && blockStart === dateStr;
+              const isBlockSelectionEnd = showBlockUI && blockEnd === dateStr;
+              const isInBlockSelection = showBlockUI && !!blockStart && !!blockEnd && dateStr >= blockStart && dateStr <= blockEnd;
               
               // Build selection classes
               const selectionClasses = [];
-              if (isInSelection) {
-                selectionClasses.push('ring-2 ring-sky-500');
-              }
-              if (isSelectionStart) {
-                selectionClasses.push('ring-4 ring-sky-600');
-              }
-              if (isSelectionEnd && createEnd !== createStart) {
-                selectionClasses.push('ring-4 ring-sky-600');
+              if (showBlockUI) {
+                if (isInBlockSelection) selectionClasses.push('ring-2 ring-red-500');
+                if (isBlockSelectionStart) selectionClasses.push('ring-4 ring-red-600');
+                if (isBlockSelectionEnd && blockEnd !== blockStart) selectionClasses.push('ring-4 ring-red-600');
+              } else {
+                if (isInSelection) selectionClasses.push('ring-2 ring-sky-500');
+                if (isSelectionStart) selectionClasses.push('ring-4 ring-sky-600');
+                if (isSelectionEnd && createEnd !== createStart) selectionClasses.push('ring-4 ring-sky-600');
               }
               
               // If a start is selected, visualize whether using this cell as the end would be invalid
@@ -555,6 +584,27 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
                 <button
                   key={idx}
                   onClick={() => {
+                    // --- BLOCK DATE RANGE MODE: calendar selection populates blockStart/blockEnd ---
+                    if (showBlockUI) {
+                      if (!blockStart || (blockStart && blockEnd)) {
+                        setBlockStart(dateStr);
+                        setBlockEnd(null);
+                        setBlockError(null);
+                        setOverlapWarning(null);
+                        return;
+                      }
+                      if (blockStart && !blockEnd) {
+                        if (dateStr < blockStart) {
+                          setBlockStart(dateStr);
+                          return;
+                        }
+                        setBlockEnd(dateStr);
+                        setBlockError(null);
+                      }
+                      return;
+                    }
+                    
+                    // --- CREATE BOOKING MODE ---
                     // Case 1: Blocked day - do nothing
                     if (blocked) return;
                     
@@ -644,17 +694,30 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
           </div>
         </div>
 
-      {/* FEAT-ADMIN-BLOCK-001: Block Date Management UI */}
+      {/* Mode toggle + form area: always below calendar, above Active Blocks */}
       {!viewUserId && (
         <div className="mt-4 flex gap-2">
           <button
-            onClick={() => setShowBlockUI(false)}
+            onClick={() => {
+              setShowBlockUI(false);
+              setBlockStart(null);
+              setBlockEnd(null);
+              setBlockError(null);
+              setOverlapWarning(null);
+            }}
             className={`px-4 py-2 rounded-lg ${!showBlockUI ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 border'}`}
           >
             Create Booking
           </button>
           <button
-            onClick={() => setShowBlockUI(true)}
+            onClick={() => {
+              setShowBlockUI(true);
+              setCreateStart(null);
+              setCreateEnd(null);
+              setSelectedDate(null);
+              setSelectedDetails(null);
+              setCreateError(null);
+            }}
             className={`px-4 py-2 rounded-lg ${showBlockUI ? 'bg-red-600 text-white' : 'bg-white text-slate-700 border'}`}
           >
             Block Date Range
@@ -662,16 +725,23 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
         </div>
       )}
 
+      {/* Block Date Range form - below toggle, above Active Blocks */}
       {showBlockUI && !viewUserId && (
         <div className="mt-4 rounded-xl border bg-red-50 shadow-sm p-4">
           <div className="font-semibold mb-3 text-red-900">Block Date Range</div>
+          {(blockStart || blockEnd) && (
+            <div className="mb-3 text-sm text-red-800">
+              Selected on calendar: <span className="font-medium">{blockStart ?? '—'}</span>
+              {blockEnd ? ` to ${blockEnd}` : ' (click end date on calendar)'}
+            </div>
+          )}
           <div className="mb-3 grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="flex flex-col">
               <label className="text-sm text-slate-600">Start Date</label>
               <input
                 type="date"
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
-                value={blockStart || ''}
+                value={blockStart ?? ''}
                 onChange={(e) => setBlockStart(e.target.value || null)}
               />
             </div>
@@ -680,7 +750,7 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
               <input
                 type="date"
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
-                value={blockEnd || ''}
+                value={blockEnd ?? ''}
                 onChange={(e) => setBlockEnd(e.target.value || null)}
               />
             </div>
@@ -820,59 +890,7 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
         </div>
       )}
 
-      {/* Blocked Dates List */}
-      {!viewUserId && blockedDates.length > 0 && (
-        <div className="mt-4 rounded-xl border bg-white shadow-sm p-4">
-          <div className="font-semibold mb-3">Active Blocks ({blockedDates.length})</div>
-          <div className="overflow-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left p-2">Start</th>
-                  <th className="text-left p-2">End</th>
-                  <th className="text-left p-2">Type</th>
-                  <th className="text-left p-2">Reason</th>
-                  <th className="text-left p-2">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {blockedDates.map((block) => (
-                  <tr key={block._id} className="border-b">
-                    <td className="p-2">{block.startDate}</td>
-                    <td className="p-2">{block.endDate}</td>
-                    <td className="p-2 capitalize">{block.blockType}</td>
-                    <td className="p-2">{block.reason || '—'}</td>
-                    <td className="p-2">
-                      <button
-                        onClick={async () => {
-                          if (!confirm('Delete this block?')) return;
-                          try {
-                            await clientFetchJson(`/bookings/blocked-dates/${block._id}`, { method: 'DELETE' });
-                            const startStr = formatDateString(firstDay);
-                            const endStr = formatDateString(lastDay);
-                            const res = await clientFetchJson<AvailabilityResp>(`/bookings/availability/${assetId}?startDate=${startStr}&endDate=${endStr}`);
-                            setCalendar(res.data.calendar || {});
-                            const blocksRes = await clientFetchJson<{ success: boolean; data: BlockedDate[] }>(`/bookings/blocked-dates/${assetId}`);
-                            setBlockedDates(blocksRes?.data || []);
-                            router.refresh();
-                          } catch (e: any) {
-                            alert(e?.error || e?.message || 'Failed to delete block');
-                          }
-                        }}
-                        className="text-red-600 hover:text-red-800 text-xs underline"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Booking Creation Form - Show when dates selected */}
+      {/* Create Booking form - below toggle, above Active Blocks (when Create Booking mode + dates selected) */}
       {createStart && !showBlockUI && (
         <div className="mt-4 rounded-xl border-2 border-sky-300 bg-sky-50 shadow-sm p-4">
           <div className="font-semibold mb-3 text-sky-900">Create Booking</div>
@@ -990,6 +1008,58 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
               </ul>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Active Blocks - always below Create Booking / Block Date Range form */}
+      {!viewUserId && blockedDates.length > 0 && (
+        <div className="mt-4 rounded-xl border bg-white shadow-sm p-4">
+          <div className="font-semibold mb-3">Active Blocks ({blockedDates.length})</div>
+          <div className="overflow-auto">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="text-left p-2">Start</th>
+                  <th className="text-left p-2">End</th>
+                  <th className="text-left p-2">Type</th>
+                  <th className="text-left p-2">Reason</th>
+                  <th className="text-left p-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {blockedDates.map((block) => (
+                  <tr key={block._id} className="border-b">
+                    <td className="p-2">{block.startDate}</td>
+                    <td className="p-2">{block.endDate}</td>
+                    <td className="p-2 capitalize">{block.blockType}</td>
+                    <td className="p-2">{block.reason || '—'}</td>
+                    <td className="p-2">
+                      <button
+                        onClick={async () => {
+                          if (!confirm('Delete this block?')) return;
+                          try {
+                            await clientFetchJson(`/bookings/blocked-dates/${block._id}`, { method: 'DELETE' });
+                            const startStr = formatDateString(firstDay);
+                            const endStr = formatDateString(lastDay);
+                            const res = await clientFetchJson<AvailabilityResp>(`/bookings/availability/${assetId}?startDate=${startStr}&endDate=${endStr}`);
+                            setCalendar(res.data.calendar || {});
+                            const blocksRes = await clientFetchJson<{ success: boolean; data: BlockedDate[] }>(`/bookings/blocked-dates/${assetId}`);
+                            setBlockedDates(blocksRes?.data || []);
+                            router.refresh();
+                          } catch (e: any) {
+                            alert(e?.error || e?.message || 'Failed to delete block');
+                          }
+                        }}
+                        className="text-red-600 hover:text-red-800 text-xs underline"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

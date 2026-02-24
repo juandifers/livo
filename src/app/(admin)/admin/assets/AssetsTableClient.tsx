@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import Cookies from 'js-cookie';
 import { clientFetchJson } from '@/lib/api.client';
 
 type Owner = { user?: { _id: string; name?: string; lastName?: string; email: string } | string; sharePercentage: number };
@@ -85,14 +86,15 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
 
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
+    const MAX_FILE_SIZE = 4 * 1024 * 1024; // Keep below Vercel request cap
     const validFiles = files.filter(file => {
       const isValidType = file.type.startsWith('image/');
-      const isValidSize = file.size <= 5 * 1024 * 1024; // 5MB limit
+      const isValidSize = file.size <= MAX_FILE_SIZE;
       return isValidType && isValidSize;
     });
 
     if (validFiles.length !== files.length) {
-      setSubmitError('Some files were rejected. Only images under 5MB are allowed.');
+      setSubmitError('Some files were rejected. Only images under 4MB are allowed.');
     }
 
     const newPhotos = [...photos, ...validFiles];
@@ -117,22 +119,35 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
   const uploadPhotos = async (assetId: string) => {
     if (photos.length === 0) return [];
 
-    const formData = new FormData();
-    photos.forEach(photo => {
+    const token = Cookies.get('token');
+    const headers: HeadersInit = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const uploadedUrls: string[] = [];
+
+    // Upload one photo per request to stay under platform body limits.
+    for (const photo of photos) {
+      const formData = new FormData();
       formData.append('photos', photo);
-    });
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/assets/${assetId}/photos`, {
-      method: 'POST',
-      body: formData,
-    });
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/assets/${assetId}/photos`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+        headers,
+      });
 
-    if (!response.ok) {
-      throw new Error('Failed to upload photos');
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(body || 'Failed to upload photos');
+      }
+
+      const result = await response.json();
+      const urls = result?.data?.photoUrls || [];
+      uploadedUrls.push(...urls);
     }
 
-    const result = await response.json();
-    return result.data.photoUrls;
+    return uploadedUrls;
   };
 
   const handleCancelAdd = () => {
@@ -252,7 +267,7 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                   </svg>
                   <span className="text-sm">Click to upload photos</span>
-                  <span className="text-xs text-slate-500">Max 5MB per image</span>
+                  <span className="text-xs text-slate-500">Max 4MB per image</span>
                 </label>
               </div>
               
@@ -348,8 +363,8 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
               // Construct photo URL
               const getPhotoUrl = (photoUrl: string) => {
                 if (photoUrl.startsWith('http')) return photoUrl;
-                const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api', '') || '';
-                return `${baseUrl}${photoUrl}`;
+                if (photoUrl.startsWith('/')) return photoUrl;
+                return `/${photoUrl}`;
               };
 
               // Placeholder images based on asset type
@@ -425,4 +440,3 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
     </div>
   );
 }
-

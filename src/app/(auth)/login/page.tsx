@@ -3,6 +3,7 @@
 
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { clientFetchJson } from '@/lib/api.client';
 import { setToken } from '@/lib/auth';
 
@@ -73,6 +74,9 @@ function LoginForm() {
         >
           {isBusy ? 'Signing in…' : 'Sign In'}
         </button>
+        <Link href="/forgot-password" className="block mt-4 text-sm text-slate-600 hover:text-slate-900">
+          Forgot password?
+        </Link>
       </form>
     </div>
   );

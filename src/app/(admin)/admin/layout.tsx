@@ -12,6 +12,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link href="/admin/users" className="block rounded px-3 py-2 text-slate-700 hover:bg-slate-100">Users</Link>
           <Link href="/admin/assets" className="block rounded px-3 py-2 text-slate-700 hover:bg-slate-100">Assets</Link>
           <Link href="/admin/special-dates" className="block rounded px-3 py-2 text-slate-700 hover:bg-slate-100">Special Dates</Link>
+          <Link href="/admin/change-password" className="block rounded px-3 py-2 text-slate-700 hover:bg-slate-100">Change Password</Link>
         </nav>
       </aside>
       <main className="flex-1 p-8">

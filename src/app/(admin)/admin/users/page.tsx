@@ -8,6 +8,7 @@ type User = {
   lastName?: string;
   email: string;
   role?: string;
+  isActive?: boolean;
 };
 
 type UsersResp = { success: boolean; data: User[] };
