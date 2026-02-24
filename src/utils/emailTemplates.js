@@ -300,7 +300,99 @@ If you didn't request this reset, please ignore this email.
   return { html, text };
 };
 
+const getBookingConfirmationTemplate = ({ userName, assetName, bookingRanges = [], createdByAdmin = false }) => {
+  const safeRanges = bookingRanges.length > 0 ? bookingRanges : ['Dates unavailable'];
+  const bookingListHtml = safeRanges.map((range) => `<li>${range}</li>`).join('');
+  const bookingListText = safeRanges.map((range) => `- ${range}`).join('\n');
+  const adminNote = createdByAdmin
+    ? '<p>This reservation was created by an administrator on your behalf.</p>'
+    : '';
+  const adminNoteText = createdByAdmin
+    ? '\nThis reservation was created by an administrator on your behalf.\n'
+    : '';
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Booking Confirmed - Livo</title>
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 640px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+        <div style="background-color: white; border-radius: 8px; padding: 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h1 style="color: #1E4640; margin-top: 0;">Booking Confirmed</h1>
+            <p>Hello ${userName || 'there'},</p>
+            <p>Your booking for <strong>${assetName || 'your asset'}</strong> has been confirmed.</p>
+            ${adminNote}
+            <p><strong>Booking dates:</strong></p>
+            <ul>${bookingListHtml}</ul>
+            <p>Thank you for using Livo.</p>
+        </div>
+    </body>
+    </html>
+  `;
+
+  const text = `
+Booking Confirmed - Livo
+
+Hello ${userName || 'there'},
+
+Your booking for ${assetName || 'your asset'} has been confirmed.
+${adminNoteText}
+Booking dates:
+${bookingListText}
+
+Thank you for using Livo.
+  `;
+
+  return { html, text };
+};
+
+const getBookingCancellationTemplate = ({ userName, assetName, bookingRange, cancelledByAdmin = false }) => {
+  const adminNote = cancelledByAdmin
+    ? '<p>This booking was cancelled by an administrator.</p>'
+    : '';
+  const adminNoteText = cancelledByAdmin
+    ? '\nThis booking was cancelled by an administrator.\n'
+    : '';
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Booking Cancelled - Livo</title>
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 640px; margin: 0 auto; padding: 20px; background-color: #f8f9fa;">
+        <div style="background-color: white; border-radius: 8px; padding: 32px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h1 style="color: #1E4640; margin-top: 0;">Booking Cancelled</h1>
+            <p>Hello ${userName || 'there'},</p>
+            <p>Your booking for <strong>${assetName || 'your asset'}</strong> has been cancelled.</p>
+            ${adminNote}
+            <p><strong>Cancelled dates:</strong> ${bookingRange || 'Dates unavailable'}</p>
+        </div>
+    </body>
+    </html>
+  `;
+
+  const text = `
+Booking Cancelled - Livo
+
+Hello ${userName || 'there'},
+
+Your booking for ${assetName || 'your asset'} has been cancelled.
+${adminNoteText}
+Cancelled dates: ${bookingRange || 'Dates unavailable'}
+  `;
+
+  return { html, text };
+};
+
 module.exports = {
   getAccountSetupTemplate,
-  getPasswordResetTemplate
+  getPasswordResetTemplate,
+  getBookingConfirmationTemplate,
+  getBookingCancellationTemplate
 };

@@ -9,7 +9,8 @@ const {
   removeOwner,
   updateOwners,
   updateOwnerAnniversary,
-  uploadPhotos
+  uploadPhotos,
+  deletePhoto
 } = require('../controllers/assetController');
 
 const {
@@ -47,5 +48,6 @@ router.delete('/:id/owners/:userId', authorize('admin'), validateRemoveOwner, re
 
 // Photo upload (admin only)
 router.post('/:id/photos', authorize('admin'), uploadPhotos);
+router.delete('/:id/photos', authorize('admin'), deletePhoto);
 
-module.exports = router; 
+module.exports = router;

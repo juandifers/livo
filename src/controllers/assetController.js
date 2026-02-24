@@ -3,6 +3,7 @@ const User = require('../models/User');
 const { handleNullOwners } = require('../utils/assetUtils');
 const DateUtils = require('../utils/dateUtils');
 const { isCloudinaryConfigured, uploadBuffer } = require('../config/cloudinary');
+const config = require('../config/config');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -691,10 +692,12 @@ const diskStorageConfig = multer.diskStorage({
   }
 });
 
+const shouldUseDiskStorage = !isCloudinaryConfigured && config.env !== 'production';
+
 const upload = multer({
-  storage: isCloudinaryConfigured ? memStorage : diskStorageConfig,
+  storage: shouldUseDiskStorage ? diskStorageConfig : memStorage,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 4 * 1024 * 1024 // Keep below common serverless body caps
   },
   fileFilter: function (req, file, cb) {
     if (file.mimetype.startsWith('image/')) {
@@ -711,6 +714,13 @@ const upload = multer({
 exports.uploadPhotos = async (req, res) => {
   try {
     const assetId = req.params.id;
+
+    if (!isCloudinaryConfigured && config.env === 'production') {
+      return res.status(500).json({
+        success: false,
+        error: 'Cloudinary is not configured in production. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET.'
+      });
+    }
     
     // Check if asset exists
     const asset = await Asset.findById(assetId);
@@ -724,6 +734,12 @@ exports.uploadPhotos = async (req, res) => {
     // Handle multer upload
     upload.array('photos', 10)(req, res, async (err) => {
       if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            error: 'Each image must be 4MB or smaller'
+          });
+        }
         return res.status(400).json({
           success: false,
           error: err.message
@@ -769,7 +785,7 @@ exports.uploadPhotos = async (req, res) => {
         });
       } catch (updateErr) {
         // Clean up local files only when using disk storage
-        if (!isCloudinaryConfigured && req.files) {
+        if (shouldUseDiskStorage && req.files) {
           req.files.forEach(file => {
             const filePath = path.join(__dirname, '../../uploads/assets', file.filename);
             if (fs.existsSync(filePath)) {
@@ -790,4 +806,62 @@ exports.uploadPhotos = async (req, res) => {
       error: 'Server Error: ' + err.message
     });
   }
-}; 
+};
+
+// @desc    Delete a photo from an asset
+// @route   DELETE /api/assets/:id/photos
+// @access  Private (Admin only)
+exports.deletePhoto = async (req, res) => {
+  try {
+    const assetId = req.params.id;
+    const { photoUrl, index } = req.body || {};
+
+    const asset = await Asset.findById(assetId);
+    if (!asset) {
+      return res.status(404).json({
+        success: false,
+        error: 'Asset not found'
+      });
+    }
+
+    if (!Array.isArray(asset.photos) || asset.photos.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Asset has no photos'
+      });
+    }
+
+    let removeIndex = -1;
+
+    if (typeof index === 'number' && Number.isInteger(index)) {
+      removeIndex = index;
+    } else if (typeof photoUrl === 'string' && photoUrl.trim()) {
+      const target = photoUrl.trim();
+      removeIndex = asset.photos.findIndex((p) => p === target);
+    }
+
+    if (removeIndex < 0 || removeIndex >= asset.photos.length) {
+      return res.status(404).json({
+        success: false,
+        error: 'Photo not found on this asset'
+      });
+    }
+
+    const removed = asset.photos[removeIndex];
+    asset.photos.splice(removeIndex, 1);
+    await asset.save();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        removedPhoto: removed,
+        photos: asset.photos
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: 'Server Error: ' + err.message
+    });
+  }
+};

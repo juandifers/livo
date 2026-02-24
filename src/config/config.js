@@ -1,5 +1,12 @@
 require('dotenv').config();
 
+const parseBooleanEnv = (value, defaultValue = false) => {
+  if (value === undefined) return defaultValue;
+  return String(value).toLowerCase() === 'true';
+};
+
+const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+
 module.exports = {
   port: process.env.PORT || 3000,
   env: process.env.NODE_ENV || 'development',
@@ -30,9 +37,13 @@ module.exports = {
     username: process.env.SMTP_USERNAME,
     password: process.env.SMTP_PASSWORD,
     from: process.env.FROM_EMAIL || 'noreply@yourdomain.com',
-    fromName: process.env.FROM_NAME || 'Asset Booking System'
+    fromName: process.env.FROM_NAME || 'Asset Booking System',
+    strictTransport: parseBooleanEnv(process.env.EMAIL_STRICT_TRANSPORT, true),
+    allowMockFallback: parseBooleanEnv(process.env.ALLOW_EMAIL_MOCK_FALLBACK, false)
   },
   
-  // Base URL for links in emails
-  baseUrl: process.env.BASE_URL || 'http://localhost:3000'
-}; 
+  // URLs used in account setup and password reset emails
+  baseUrl,
+  accountSetupUrlBase: process.env.ACCOUNT_SETUP_URL_BASE || `${baseUrl}/account-setup.html`,
+  passwordResetUrlBase: process.env.PASSWORD_RESET_URL_BASE || `${baseUrl}/reset-password.html`
+};

@@ -5,9 +5,9 @@ const {
   updateUser, 
   deleteUser,
   getCurrentUser,
-  getUserOwnedAssets,
-  createUser
+  getUserOwnedAssets
 } = require('../controllers/userController');
+const { createUser } = require('../controllers/authController');
 
 const {
   validateUpdateUser,

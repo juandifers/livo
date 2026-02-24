@@ -3,6 +3,74 @@ const User = require('../models/User');
 const Asset = require('../models/Asset');
 const SpecialDate = require('../models/SpecialDate');
 const DateUtils = require('../utils/dateUtils');
+const sendEmail = require('../utils/sendEmail');
+const {
+  getBookingConfirmationTemplate,
+  getBookingCancellationTemplate
+} = require('../utils/emailTemplates');
+
+const getUserDisplayName = (user) => {
+  if (!user) return 'there';
+  const firstName = user.name || '';
+  const lastName = user.lastName || '';
+  const fullName = `${firstName} ${lastName}`.trim();
+  return fullName || user.email || 'there';
+};
+
+const formatBookingRange = (booking) => {
+  const start = DateUtils.formatForApi(booking.startDate);
+  const end = DateUtils.formatForApi(booking.endDate);
+  return `${start} to ${end}`;
+};
+
+const trySendBookingConfirmationEmail = async ({ user, asset, bookings, createdByAdmin = false }) => {
+  try {
+    if (!user?.email || !Array.isArray(bookings) || bookings.length === 0) {
+      return;
+    }
+
+    const bookingRanges = bookings.map(formatBookingRange);
+    const emailTemplate = getBookingConfirmationTemplate({
+      userName: getUserDisplayName(user),
+      assetName: asset?.name || 'your asset',
+      bookingRanges,
+      createdByAdmin
+    });
+
+    await sendEmail({
+      email: user.email,
+      subject: `Booking Confirmed - ${asset?.name || 'Livo'}`,
+      message: emailTemplate.text,
+      html: emailTemplate.html
+    });
+  } catch (err) {
+    console.error('Booking confirmation email failed:', err.message);
+  }
+};
+
+const trySendBookingCancellationEmail = async ({ user, asset, booking, cancelledByAdmin = false }) => {
+  try {
+    if (!user?.email || !booking) {
+      return;
+    }
+
+    const emailTemplate = getBookingCancellationTemplate({
+      userName: getUserDisplayName(user),
+      assetName: asset?.name || 'your asset',
+      bookingRange: formatBookingRange(booking),
+      cancelledByAdmin
+    });
+
+    await sendEmail({
+      email: user.email,
+      subject: `Booking Cancelled - ${asset?.name || 'Livo'}`,
+      message: emailTemplate.text,
+      html: emailTemplate.html
+    });
+  } catch (err) {
+    console.error('Booking cancellation email failed:', err.message);
+  }
+};
 
 // Constants for booking rules
 const DAYS_PER_EIGHTH_SHARE = 44; // Days allowed per 1/8 share (12.5%)
@@ -646,6 +714,7 @@ exports.createBooking = async (req, res) => {
     
     // Get user ID from the authenticated user or admin override
     const userId = req.body.userId && isAdmin ? req.body.userId : req.user.id;
+    const isAdminBookingForAnotherUser = isAdmin && String(userId) !== String(req.user.id);
     const { assetId, startDate: startDateStr, endDate: endDateStr, notes, useExtraDays } = req.body;
     
     // DEBUG: Log incoming request data
@@ -1113,6 +1182,13 @@ exports.createBooking = async (req, res) => {
           
           // Create all the bookings
           const createdBookings = await Booking.insertMany(bookingsToCreate);
+
+          await trySendBookingConfirmationEmail({
+            user,
+            asset,
+            bookings: createdBookings,
+            createdByAdmin: isAdminBookingForAnotherUser
+          });
           
           // Include extra day information in response
           return res.status(201).json({
@@ -1307,6 +1383,13 @@ exports.createBooking = async (req, res) => {
     
     // Create all the bookings
     const createdBookings = await Booking.insertMany(bookingsToCreate);
+
+    await trySendBookingConfirmationEmail({
+      user,
+      asset,
+      bookings: createdBookings,
+      createdByAdmin: isAdminBookingForAnotherUser
+    });
     
     // Log special date bookings for debugging
     const specialDateBookings = createdBookings.filter(b => b.specialDateType);
@@ -1472,12 +1555,29 @@ exports.updateBooking = async (req, res) => {
         }
       }
     }
+
+    const wasCancelled = booking.status === 'cancelled';
     
     // Update the booking
     booking = await Booking.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
       runValidators: true
     });
+
+    if (!wasCancelled && booking.status === 'cancelled') {
+      const [bookingUser, bookingAsset] = await Promise.all([
+        User.findById(booking.user).select('name lastName email'),
+        Asset.findById(booking.asset).select('name')
+      ]);
+
+      const cancelledByAdmin = req.user.role === 'admin' && String(booking.user) !== String(req.user.id);
+      await trySendBookingCancellationEmail({
+        user: bookingUser,
+        asset: bookingAsset,
+        booking,
+        cancelledByAdmin
+      });
+    }
     
     res.status(200).json({
       success: true,
@@ -1496,7 +1596,9 @@ exports.updateBooking = async (req, res) => {
 // @access  Private
 exports.deleteBooking = async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findById(req.params.id)
+      .populate('user', 'name lastName email')
+      .populate('asset', 'name');
     
     if (!booking) {
       return res.status(404).json({
@@ -1512,6 +1614,8 @@ exports.deleteBooking = async (req, res) => {
     // days are immediately refunded (credited back). Partial overlaps yield partial refunds.
     // Policy decisions: PD-CANCEL-001 through PD-CANCEL-004 (see PRD.md)
     // Domain rules: RULE-HOME-021 (homes) and RULE-BOAT-021 (boats)
+    const cancelledByAdmin = req.user.role === 'admin' && String(booking.user?._id || booking.user) !== String(req.user.id);
+
     if (booking.isShortTerm) {
       // Calculate original booking days (inclusive-inclusive date range)
       const originalDays = Math.ceil((booking.endDate - booking.startDate) / (1000 * 60 * 60 * 24)) + 1;
@@ -1529,6 +1633,12 @@ exports.deleteBooking = async (req, res) => {
       booking.remainingPenaltyDays = originalDays;  // Days still counting as used (starts at full duration)
       
       await booking.save();
+      await trySendBookingCancellationEmail({
+        user: booking.user,
+        asset: booking.asset,
+        booking,
+        cancelledByAdmin
+      });
       
       // Optional: Notify other owners that these dates are available for short-term booking
       
@@ -1542,6 +1652,12 @@ exports.deleteBooking = async (req, res) => {
       booking.status = 'cancelled';
       booking.cancelledAt = new Date();
       await booking.save();
+      await trySendBookingCancellationEmail({
+        user: booking.user,
+        asset: booking.asset,
+        booking,
+        cancelledByAdmin
+      });
       
       return res.status(200).json({
         success: true,

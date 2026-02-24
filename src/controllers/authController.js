@@ -5,15 +5,66 @@ const { getAccountSetupTemplate, getPasswordResetTemplate } = require('../utils/
 const { sendTokenResponse } = require('../utils/jwtUtils');
 const config = require('../config/config');
 
+const FORGOT_PASSWORD_GENERIC_MESSAGE = 'If an account with that email exists, a password reset email has been sent.';
+const isPendingSetupUser = (user) => !user.isActive || !user.password;
+
+const hashToken = (token) =>
+  crypto
+    .createHash('sha256')
+    .update(token)
+    .digest('hex');
+
+const buildTokenUrl = (baseUrl, token) => {
+  try {
+    const url = new URL(baseUrl);
+    url.searchParams.set('token', token);
+    return url.toString();
+  } catch (err) {
+    const joiner = baseUrl.includes('?') ? '&' : '?';
+    return `${baseUrl}${joiner}token=${encodeURIComponent(token)}`;
+  }
+};
+
+const sendAccountSetupEmail = async (user) => {
+  const setupToken = user.getAccountSetupToken();
+  await user.save({ validateBeforeSave: false });
+
+  const setupUrl = buildTokenUrl(config.accountSetupUrlBase, setupToken);
+  const emailTemplate = getAccountSetupTemplate(setupUrl, `${user.name} ${user.lastName}`);
+
+  await sendEmail({
+    email: user.email,
+    subject: 'Welcome to Livo - Complete Your Account Setup',
+    message: emailTemplate.text,
+    html: emailTemplate.html
+  });
+};
+
+const sendPasswordResetEmail = async (user) => {
+  const resetToken = user.getResetPasswordToken();
+  await user.save({ validateBeforeSave: false });
+
+  const resetUrl = buildTokenUrl(config.passwordResetUrlBase, resetToken);
+  const emailTemplate = getPasswordResetTemplate(resetUrl, `${user.name} ${user.lastName}`);
+
+  await sendEmail({
+    email: user.email,
+    subject: 'Password Reset Request - Livo',
+    message: emailTemplate.text,
+    html: emailTemplate.html
+  });
+};
+
 // @desc    Login user
 // @route   POST /api/auth/login
 // @access  Public
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = String(email).trim().toLowerCase();
 
     // Check if user exists
-    const user = await User.findOne({ email }).select('+password');
+    const user = await User.findOne({ email: normalizedEmail }).select('+password');
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -60,12 +111,36 @@ exports.login = async (req, res) => {
 // @route   POST /api/auth/users
 // @access  Private/Admin
 exports.createUser = async (req, res) => {
+  let user;
+  let createdNow = false;
+
   try {
     const { name, lastName, email, phoneNumber, role } = req.body;
+    const normalizedEmail = String(email).trim().toLowerCase();
 
     // Check if user already exists
-    let user = await User.findOne({ email });
+    user = await User.findOne({ email: normalizedEmail });
     if (user) {
+      if (isPendingSetupUser(user)) {
+        await sendAccountSetupEmail(user);
+
+        return res.status(200).json({
+          success: true,
+          data: {
+            user: {
+              id: user._id,
+              name: user.name,
+              lastName: user.lastName,
+              email: user.email,
+              phoneNumber: user.phoneNumber,
+              role: user.role,
+              isActive: user.isActive
+            },
+            message: 'User already existed and account setup email was resent'
+          }
+        });
+      }
+
       return res.status(400).json({
         success: false,
         error: 'User with that email already exists'
@@ -76,29 +151,14 @@ exports.createUser = async (req, res) => {
     user = await User.create({
       name,
       lastName,
-      email,
+      email: normalizedEmail,
       phoneNumber,
       role: role || 'user',
       isActive: false
     });
+    createdNow = true;
 
-    // Generate account setup token
-    const setupToken = user.getAccountSetupToken();
-    await user.save({ validateBeforeSave: false });
-
-    // Create setup URL - point to the HTML page
-    const setupUrl = `${config.baseUrl}/account-setup.html?token=${setupToken}`;
-
-    // Get email template
-    const emailTemplate = getAccountSetupTemplate(setupUrl, `${user.name} ${user.lastName}`);
-
-    // Send email
-    await sendEmail({
-      email: user.email,
-      subject: 'Welcome to Livo - Complete Your Account Setup',
-      message: emailTemplate.text,
-      html: emailTemplate.html
-    });
+    await sendAccountSetupEmail(user);
 
     res.status(201).json({
       success: true,
@@ -117,10 +177,10 @@ exports.createUser = async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-    
-    // If there was an error sending email, remove user and return error
-    if (err.message.includes('ECONNREFUSED')) {
-      await User.findOneAndDelete({ email: req.body.email });
+
+    // Roll back only when this request created the user.
+    if (createdNow && user && isPendingSetupUser(user)) {
+      await User.findByIdAndDelete(user._id);
       return res.status(500).json({
         success: false,
         error: 'Email could not be sent. User creation aborted.'
@@ -139,13 +199,8 @@ exports.createUser = async (req, res) => {
 // @access  Public
 exports.accountSetup = async (req, res) => {
   try {
-    // Get hashed token
-    const setupToken = crypto
-      .createHash('sha256')
-      .update(req.params.token)
-      .digest('hex');
+    const setupToken = hashToken(req.params.token);
 
-    // Find user by setup token and check if token is still valid
     const user = await User.findOne({
       accountSetupToken: setupToken,
       accountSetupExpire: { $gt: Date.now() }
@@ -176,41 +231,62 @@ exports.accountSetup = async (req, res) => {
   }
 };
 
+// @desc    Verify account setup token
+// @route   GET /api/auth/account-setup/:token/verify
+// @access  Public
+exports.verifyAccountSetupToken = async (req, res) => {
+  try {
+    const setupToken = hashToken(req.params.token);
+    const user = await User.findOne({
+      accountSetupToken: setupToken,
+      accountSetupExpire: { $gt: Date.now() }
+    }).select('name lastName email accountSetupExpire');
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired setup token'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        valid: true,
+        email: user.email,
+        userName: `${user.name} ${user.lastName}`.trim(),
+        expiresAt: user.accountSetupExpire
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: 'Server error'
+    });
+  }
+};
+
 // @desc    Forgot password
 // @route   POST /api/auth/forgot-password
 // @access  Public
 exports.forgotPassword = async (req, res) => {
   try {
-    const user = await User.findOne({ email: req.body.email });
+    const normalizedEmail = String(req.body.email).trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'No user found with that email'
+      return res.status(200).json({
+        success: true,
+        data: FORGOT_PASSWORD_GENERIC_MESSAGE
       });
     }
 
-    // Generate reset token
-    const resetToken = user.getResetPasswordToken();
-    await user.save({ validateBeforeSave: false });
-
-    // Create reset URL
-    const resetUrl = `${config.baseUrl}/reset-password/${resetToken}`;
-
-    // Get email template
-    const emailTemplate = getPasswordResetTemplate(resetUrl, `${user.name} ${user.lastName}`);
-
     try {
-      await sendEmail({
-        email: user.email,
-        subject: 'Password Reset Request - Livo',
-        message: emailTemplate.text,
-        html: emailTemplate.html
-      });
+      await sendPasswordResetEmail(user);
 
       res.status(200).json({
         success: true,
-        data: 'Email sent'
+        data: FORGOT_PASSWORD_GENERIC_MESSAGE
       });
     } catch (err) {
       console.error(err);
@@ -220,11 +296,47 @@ exports.forgotPassword = async (req, res) => {
 
       return res.status(500).json({
         success: false,
-        error: 'Email could not be sent'
+        error: 'Could not send password reset email'
       });
     }
   } catch (err) {
     res.status(500).json({
+      success: false,
+      error: 'Server error'
+    });
+  }
+};
+
+// @desc    Verify reset password token
+// @route   GET /api/auth/reset-password/:token/verify
+// @access  Public
+exports.verifyResetPasswordToken = async (req, res) => {
+  try {
+    const resetPasswordToken = hashToken(req.params.token);
+
+    const user = await User.findOne({
+      resetPasswordToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    }).select('name lastName email resetPasswordExpire');
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid or expired token'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        valid: true,
+        email: user.email,
+        userName: `${user.name} ${user.lastName}`.trim(),
+        expiresAt: user.resetPasswordExpire
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({
       success: false,
       error: 'Server error'
     });
@@ -236,13 +348,8 @@ exports.forgotPassword = async (req, res) => {
 // @access  Public
 exports.resetPassword = async (req, res) => {
   try {
-    // Get hashed token
-    const resetPasswordToken = crypto
-      .createHash('sha256')
-      .update(req.params.token)
-      .digest('hex');
+    const resetPasswordToken = hashToken(req.params.token);
 
-    // Find user by reset token and check if token is still valid
     const user = await User.findOne({
       resetPasswordToken,
       resetPasswordExpire: { $gt: Date.now() }
@@ -285,19 +392,15 @@ exports.adminResetUserPassword = async (req, res) => {
       });
     }
 
-    const resetToken = user.getResetPasswordToken();
-    await user.save({ validateBeforeSave: false });
-
-    const resetUrl = `${config.baseUrl}/reset-password/${resetToken}`;
-    const emailTemplate = getPasswordResetTemplate(resetUrl, `${user.name} ${user.lastName}`);
+    if (!user.isActive || !user.password) {
+      return res.status(400).json({
+        success: false,
+        error: 'User has not completed account setup. Send setup email instead.'
+      });
+    }
 
     try {
-      await sendEmail({
-        email: user.email,
-        subject: 'Password Reset Request - Livo',
-        message: emailTemplate.text,
-        html: emailTemplate.html
-      });
+      await sendPasswordResetEmail(user);
 
       return res.status(200).json({
         success: true,
@@ -318,6 +421,44 @@ exports.adminResetUserPassword = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Server error'
+    });
+  }
+};
+
+// @desc    Admin: resend account setup email for a user
+// @route   POST /api/auth/users/:userId/resend-account-setup
+// @access  Private/Admin
+exports.adminResendAccountSetup = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    if (user.isActive && user.password) {
+      return res.status(400).json({
+        success: false,
+        error: 'User account is already active'
+      });
+    }
+
+    await sendAccountSetupEmail(user);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        message: 'Account setup email sent',
+        email: user.email
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({
+      success: false,
+      error: 'Email could not be sent'
     });
   }
 };
