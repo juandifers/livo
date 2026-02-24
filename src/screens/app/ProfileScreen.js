@@ -62,7 +62,7 @@ const ProfileScreen = ({ navigation }) => {
         <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.contentContainer}>
           {renderSettingItem('Profile', () => navigation.navigate('UserProfile'))}
           
-          {renderSettingItem('Change Password', () => console.log('Change Password pressed'))}
+          {renderSettingItem('Change Password', () => navigation.navigate('ChangePassword'))}
           
           {renderSettingItem('Notifications', () => toggleNotifications(), 
             <Switch 

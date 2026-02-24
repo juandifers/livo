@@ -94,7 +94,7 @@ const completeAccountSetup = async (token, password, confirmPassword) => {
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Account setup failed' 
+      error: error.response?.data?.error || error.response?.data?.message || 'Account setup failed'
     };
   }
 };
@@ -112,7 +112,7 @@ const forgotPassword = async (email) => {
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Password reset request failed' 
+      error: error.response?.data?.error || error.response?.data?.message || 'Password reset request failed'
     };
   }
 };
@@ -133,7 +133,27 @@ const resetPassword = async (token, password, confirmPassword) => {
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Password reset failed' 
+      error: error.response?.data?.error || error.response?.data?.message || 'Password reset failed'
+    };
+  }
+};
+
+const changePassword = async (currentPassword, newPassword, confirmNewPassword) => {
+  try {
+    if (DEV_MODE) {
+      return { success: true, data: { message: 'Password updated successfully' } };
+    }
+
+    await apiClient.put('/auth/change-password', {
+      currentPassword,
+      newPassword,
+      confirmNewPassword
+    });
+    return { success: true, data: { message: 'Password updated successfully' } };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to change password'
     };
   }
 };
@@ -167,5 +187,6 @@ export default {
   completeAccountSetup,
   forgotPassword,
   resetPassword,
+  changePassword,
   getCurrentUser
 }; 

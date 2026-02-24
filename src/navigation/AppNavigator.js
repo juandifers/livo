@@ -20,6 +20,7 @@ import CancellationPoliciesScreen from '../screens/app/CancellationPoliciesScree
 import CreateBookingScreen from '../screens/app/CreateBookingScreen';
 import ProfileScreen from '../screens/app/ProfileScreen';
 import UserProfileScreen from '../screens/app/UserProfileScreen';
+import ChangePasswordScreen from '../screens/app/ChangePasswordScreen';
 import ApiTestScreen from '../screens/app/ApiTestScreen';
 import LoadingScreen from '../screens/LoadingScreen';
 
@@ -199,6 +200,7 @@ const AppNavigator = () => {
       <MainStack.Screen name="BookingDetail" component={BookingDetailScreen} />
       <MainStack.Screen name="CancellationPolicies" component={CancellationPoliciesScreen} />
       <MainStack.Screen name="UserProfile" component={UserProfileScreen} />
+      <MainStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
       <MainStack.Screen name="ApiTest" component={ApiTestScreen} />
     </MainStack.Navigator>
   );

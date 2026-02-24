@@ -6,7 +6,13 @@
  */
 
 // Backend API base URL
-export const API_BASE_URL = 'https://livo-backend-api.vercel.app/api';
+// You can override this at build/runtime using Expo env vars:
+// - EXPO_PUBLIC_API_URL="https://your-backend.vercel.app/api"
+// - EXPO_PUBLIC_API_BASE_URL="https://your-backend.vercel.app/api"
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  process.env.EXPO_PUBLIC_API_BASE_URL ||
+  'https://livo-backend-api.vercel.app/api';
 
 // Development mode flag - set to false to use real backend API instead of mock data
 export const DEV_MODE = false;
@@ -27,7 +33,10 @@ export const API_CONFIG = {
   
   // For production environment
   production: {
-    baseURL: 'https://livo-backend-api.vercel.app/api',
+    baseURL:
+      process.env.EXPO_PUBLIC_API_URL ||
+      process.env.EXPO_PUBLIC_API_BASE_URL ||
+      'https://livo-backend-api.vercel.app/api',
     timeout: 15000
   }
 };
