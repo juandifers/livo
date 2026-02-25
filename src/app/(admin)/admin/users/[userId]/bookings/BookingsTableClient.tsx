@@ -1,6 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import CancelBookingButton from './CancelBookingButton';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Booking = {
   _id: string;
@@ -22,6 +23,7 @@ type Props = {
 };
 
 export default function BookingsTableClient({ bookings }: Props) {
+  const { t, formatDate } = useI18n();
   const [show, setShow] = useState<'all' | 'upcoming' | 'past'>('all');
   const [sortBy, setSortBy] = useState<'asset' | 'start' | 'end'>('start');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
@@ -90,11 +92,11 @@ export default function BookingsTableClient({ bookings }: Props) {
     <div>
       <div className="flex items-center gap-4 mb-4 flex-wrap">
         <div className="flex items-center gap-2">
-          <label className="text-sm">Show</label>
+          <label className="text-sm">{t('Show')}</label>
           <select value={show} onChange={(e) => setShow(e.target.value as any)} className="border rounded-lg px-2 py-1 bg-white shadow-sm">
-            <option value="all">All</option>
-            <option value="upcoming">Upcoming</option>
-            <option value="past">Past</option>
+            <option value="all">{t('All')}</option>
+            <option value="upcoming">{t('Upcoming')}</option>
+            <option value="past">{t('Past')}</option>
           </select>
         </div>
         
@@ -106,10 +108,10 @@ export default function BookingsTableClient({ bookings }: Props) {
             onChange={(e) => setShowOnlyOverrides(e.target.checked)}
             className="rounded"
           />
-          <span>Show only overridden bookings</span>
+          <span>{t('Show only overridden bookings')}</span>
         </label>
         
-        <div className="ml-auto text-sm text-slate-500">{sorted.length} bookings</div>
+        <div className="ml-auto text-sm text-slate-500">{sorted.length} {t('bookings')}</div>
       </div>
 
       <div className="overflow-auto rounded-xl border bg-white shadow-sm">
@@ -117,18 +119,18 @@ export default function BookingsTableClient({ bookings }: Props) {
           <thead className="bg-slate-50 border-b">
             <tr>
               <th className="text-left p-3 cursor-pointer" onClick={() => toggleSort('asset')}>
-                Asset {sortBy === 'asset' ? (dir === 'asc' ? '▲' : '▼') : ''}
+                {t('Asset')} {sortBy === 'asset' ? (dir === 'asc' ? '▲' : '▼') : ''}
               </th>
               <th className="text-left p-3 cursor-pointer" onClick={() => toggleSort('start')}>
-                Start {sortBy === 'start' ? (dir === 'asc' ? '▲' : '▼') : ''}
+                {t('Start')} {sortBy === 'start' ? (dir === 'asc' ? '▲' : '▼') : ''}
               </th>
               <th className="text-left p-3 cursor-pointer" onClick={() => toggleSort('end')}>
-                End {sortBy === 'end' ? (dir === 'asc' ? '▲' : '▼') : ''}
+                {t('End')} {sortBy === 'end' ? (dir === 'asc' ? '▲' : '▼') : ''}
               </th>
-              <th className="text-left p-3">Status</th>
-              <th className="text-left p-3">Short-term</th>
-              <th className="text-left p-3">Override</th>
-              <th className="text-left p-3">Actions</th>
+              <th className="text-left p-3">{t('Status')}</th>
+              <th className="text-left p-3">{t('Short-term')}</th>
+              <th className="text-left p-3">{t('Override')}</th>
+              <th className="text-left p-3">{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -137,21 +139,21 @@ export default function BookingsTableClient({ bookings }: Props) {
                 <td className="p-3">
                   {b.asset && typeof b.asset === 'object' && 'name' in (b.asset as any) ? (b.asset as any).name : (b.asset ? String(b.asset) : '—')}
                 </td>
-                <td className="p-3">{parseDateOnly(b.startDate).toLocaleDateString()}</td>
-                <td className="p-3">{parseDateOnly(b.endDate).toLocaleDateString()}</td>
+                <td className="p-3">{formatDate(parseDateOnly(b.startDate))}</td>
+                <td className="p-3">{formatDate(parseDateOnly(b.endDate))}</td>
                 <td className="p-3">{b.status}</td>
-                <td className="p-3">{b.isShortTerm ? 'Yes' : 'No'}</td>
+                <td className="p-3">{b.isShortTerm ? t('Yes') : t('No')}</td>
                 <td className="p-3">
                   {/* FEAT-ADMIN-OVR-001: Override indicator */}
                   {b.adminOverride ? (
                     <div className="space-y-1">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                        Admin Override
+                        {t('Admin Override')}
                       </span>
                       {b.overrideReasons && b.overrideReasons.length > 0 && (
                         <details className="text-xs text-gray-600">
                           <summary className="cursor-pointer hover:text-orange-600">
-                            View violations ({b.overrideReasons.length})
+                            {t('View violations')} ({b.overrideReasons.length})
                           </summary>
                           <ul className="ml-4 mt-1 space-y-0.5">
                             {b.overrideReasons.map((r, i) => (
@@ -160,7 +162,7 @@ export default function BookingsTableClient({ bookings }: Props) {
                           </ul>
                           {b.overrideNote && (
                             <div className="mt-2 p-2 bg-gray-50 rounded text-gray-700">
-                              <strong>Note:</strong> {b.overrideNote}
+                              <strong>{t('Note:')}</strong> {b.overrideNote}
                             </div>
                           )}
                         </details>
@@ -181,7 +183,7 @@ export default function BookingsTableClient({ bookings }: Props) {
             ))}
             {displayed.length === 0 && (
               <tr>
-                <td colSpan={7} className="p-6 text-center text-slate-500">No bookings</td>
+                <td colSpan={7} className="p-6 text-center text-slate-500">{t('No bookings')}</td>
               </tr>
             )}
           </tbody>
@@ -192,7 +194,7 @@ export default function BookingsTableClient({ bookings }: Props) {
               onClick={() => setShowAll(!showAll)}
               className="text-sm text-slate-600 hover:text-slate-900 font-medium underline"
             >
-              {showAll ? `Show less (viewing all ${sorted.length})` : `Show more (${sorted.length - 8} hidden)`}
+              {showAll ? t('Show less (viewing all {{count}})', { count: sorted.length }) : t('Show more ({{count}} hidden)', { count: sorted.length - 8 })}
             </button>
           </div>
         )}
@@ -200,5 +202,4 @@ export default function BookingsTableClient({ bookings }: Props) {
     </div>
   );
 }
-
 

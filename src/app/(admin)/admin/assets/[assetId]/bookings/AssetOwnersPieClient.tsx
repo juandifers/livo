@@ -2,12 +2,15 @@
 import { useMemo, useState, useEffect } from 'react';
 import { OWNER_COLOR_PALETTE } from '@/lib/colors';
 import { clientFetchJson } from '@/lib/api.client';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import { mapCommonApiError } from '@/lib/i18n/errorMap';
 
 type Owner = { userId: string; label: string; sharePercentage: number };
 type User = { _id: string; name?: string; lastName?: string; email: string };
 type EditableOwner = { userId: string; label: string; sharePercentage: number; isNew?: boolean };
 
 export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { owners: Owner[]; assetId: string; onUpdate?: () => void }) {
+  const { t, locale } = useI18n();
   const [isEditMode, setIsEditMode] = useState(false);
   const [editableOwners, setEditableOwners] = useState<EditableOwner[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -79,7 +82,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
 
   const handleSaveEdit = async () => {
     if (!isValidTotal) {
-      setError('Total ownership cannot exceed 100%');
+      setError(t('Total ownership cannot exceed 100%'));
       return;
     }
 
@@ -108,7 +111,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
         window.location.reload();
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to update owners');
+      setError(mapCommonApiError(locale, err?.message || '', 'Failed to update owners'));
     } finally {
       setSaving(false);
     }
@@ -126,7 +129,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
 
     // Check if user is already an owner
     if (editableOwners.some(o => o.userId === userId)) {
-      setError('User is already an owner');
+      setError(t('User is already an owner'));
       return;
     }
 
@@ -142,7 +145,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
 
   const handleCreateAndAddUser = async () => {
     if (!newUserName || !newUserLastName || !newUserEmail || !newUserPhone) {
-      setError('All fields are required to create a new user');
+      setError(t('All fields are required to create a new user'));
       return;
     }
 
@@ -164,12 +167,12 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
       const newUserId = userRes.data.user._id ?? userRes.data.user.id;
       
       if (!newUserId) {
-        throw new Error('User was created but no user ID was returned');
+        throw new Error(t('User was created but no user ID was returned'));
       }
       
       const label = `${newUserName} ${newUserLastName}`;
 
-      alert(`User created. An email has been sent to ${newUserEmail} so they can set their password.`);
+      alert(t('User created. An email has been sent to {{email}} so they can set their password.', { email: newUserEmail }));
 
       setEditableOwners([...editableOwners, { userId: newUserId, label, sharePercentage: 12.5, isNew: true }]);
 
@@ -186,7 +189,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
       setNewUserPhone('');
       setShowCreateUser(false);
     } catch (err: any) {
-      setError(err?.message || 'Failed to create user');
+      setError(mapCommonApiError(locale, err?.message || '', 'Failed to create user'));
     } finally {
       setCreatingUser(false);
     }
@@ -207,13 +210,13 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div className="font-semibold">Owners by share</div>
+        <div className="font-semibold">{t('Owners by share')}</div>
         {!isEditMode ? (
           <button
             onClick={handleEditClick}
             className="text-sm px-3 py-1.5 rounded bg-slate-900 text-white hover:bg-slate-800"
           >
-            Edit
+            {t('Edit')}
           </button>
         ) : (
           <div className="flex gap-2">
@@ -222,21 +225,25 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
               disabled={saving}
               className="text-sm px-3 py-1.5 rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
             >
-              Cancel
+              {t('Cancel')}
             </button>
             <button
               onClick={handleSaveEdit}
               disabled={saving || !isValidTotal}
               className="text-sm px-3 py-1.5 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
             >
-              {saving ? 'Saving...' : 'Save'}
+              {saving ? t('Saving...') : t('Save')}
             </button>
           </div>
         )}
       </div>
 
       <div className="flex flex-col md:flex-row gap-6 items-start">
-        <div className="w-48 h-48 rounded-full border shadow-sm flex-shrink-0" style={{ background: gradient }} aria-label="Ownership distribution" />
+        <div
+          className="w-48 h-48 rounded-full border shadow-sm flex-shrink-0"
+          style={{ background: gradient }}
+          aria-label={t('Ownership distribution')}
+        />
         
         <div className="flex-1 w-full">
           {!isEditMode ? (
@@ -250,7 +257,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
                 </li>
               ))}
               {segments.length === 0 && (
-                <li className="text-sm text-slate-500">No owners found.</li>
+                <li className="text-sm text-slate-500">{t('No owners found.')}</li>
               )}
             </ul>
           ) : (
@@ -272,7 +279,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
                   <button
                     onClick={() => handleRemoveOwner(idx)}
                     className="text-red-600 hover:text-red-800 text-sm px-2"
-                    title="Remove owner"
+                    title={t('Remove owner')}
                   >
                     ✕
                   </button>
@@ -291,7 +298,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
                   className="w-full border rounded px-3 py-2 text-sm"
                   defaultValue=""
                 >
-                  <option value="">+ Add existing owner</option>
+                  <option value="">{t('+ Add existing owner')}</option>
                   {availableUsers.map(u => (
                     <option key={u._id} value={u._id}>
                       {[u.name, u.lastName].filter(Boolean).join(' ') || u.email}
@@ -307,58 +314,58 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
                     onClick={() => setShowCreateUser(true)}
                     className="w-full text-sm px-3 py-2 rounded border border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-700"
                   >
-                    + Create and add new user
+                    {t('+ Create and add new user')}
                   </button>
                 ) : (
                   <div className="border rounded-lg p-3 bg-slate-50 space-y-3">
-                    <div className="font-medium text-sm text-slate-700">Create New User</div>
+                    <div className="font-medium text-sm text-slate-700">{t('Create New User')}</div>
                     
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="text-xs text-slate-600">First Name *</label>
+                        <label className="text-xs text-slate-600">{t('First Name')} *</label>
                         <input
                           type="text"
                           value={newUserName}
                           onChange={(e) => setNewUserName(e.target.value)}
                           className="w-full border rounded px-2 py-1.5 text-sm"
-                          placeholder="John"
+                          placeholder={t('John')}
                         />
                       </div>
                       <div>
-                        <label className="text-xs text-slate-600">Last Name *</label>
+                        <label className="text-xs text-slate-600">{t('Last Name')} *</label>
                         <input
                           type="text"
                           value={newUserLastName}
                           onChange={(e) => setNewUserLastName(e.target.value)}
                           className="w-full border rounded px-2 py-1.5 text-sm"
-                          placeholder="Doe"
+                          placeholder={t('Doe')}
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="text-xs text-slate-600">Email *</label>
+                      <label className="text-xs text-slate-600">{t('Email')} *</label>
                       <input
                         type="email"
                         value={newUserEmail}
                         onChange={(e) => setNewUserEmail(e.target.value)}
                         className="w-full border rounded px-2 py-1.5 text-sm"
-                        placeholder="john.doe@example.com"
+                        placeholder={t('john.doe@example.com')}
                       />
                     </div>
 
                     <div>
-                      <label className="text-xs text-slate-600">Phone *</label>
+                      <label className="text-xs text-slate-600">{t('Phone')} *</label>
                       <input
                         type="tel"
                         value={newUserPhone}
                         onChange={(e) => setNewUserPhone(e.target.value)}
                         className="w-full border rounded px-2 py-1.5 text-sm"
-                        placeholder="+1234567890"
+                        placeholder={t('+1234567890')}
                       />
                     </div>
 
-                    <p className="text-xs text-slate-500">An email will be sent so they can set their password.</p>
+                    <p className="text-xs text-slate-500">{t('An email will be sent so they can set their password.')}</p>
 
                     <div className="flex gap-2 pt-1">
                       <button
@@ -366,14 +373,14 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
                         disabled={creatingUser}
                         className="flex-1 text-sm px-3 py-1.5 rounded border border-slate-300 hover:bg-white disabled:opacity-50"
                       >
-                        Cancel
+                        {t('Cancel')}
                       </button>
                       <button
                         onClick={handleCreateAndAddUser}
                         disabled={creatingUser || !newUserName || !newUserLastName || !newUserEmail || !newUserPhone}
                         className="flex-1 text-sm px-3 py-1.5 rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
                       >
-                        {creatingUser ? 'Creating...' : 'Create & Add'}
+                        {creatingUser ? t('Creating...') : t('Create & Add')}
                       </button>
                     </div>
                   </div>
@@ -382,7 +389,10 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
 
               {/* Total display */}
               <div className={`text-sm font-medium p-2 rounded ${isValidTotal ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-                Total: {total.toFixed(2)}% {isValidTotal ? '✓' : '(Cannot exceed 100%)'}
+                {t('Total: {{value}}% {{status}}', {
+                  value: total.toFixed(2),
+                  status: isValidTotal ? '✓' : t('(Cannot exceed 100%)'),
+                })}
               </div>
             </div>
           )}
@@ -397,5 +407,4 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
     </div>
   );
 }
-
 

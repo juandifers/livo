@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { clientFetchJson } from '@/lib/api.client';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import { mapCommonApiError } from '@/lib/i18n/errorMap';
+import LanguageSwitcher from '@/components/i18n/LanguageSwitcher';
 
 type VerifyResp = {
   success: boolean;
@@ -14,6 +17,7 @@ type VerifyResp = {
 function AccountSetupContent() {
   const params = useSearchParams();
   const token = useMemo(() => params.get('token') || '', [params]);
+  const { t, locale } = useI18n();
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -29,7 +33,7 @@ function AccountSetupContent() {
     async function verifyToken() {
       if (!token) {
         if (active) {
-          setError('Missing token. Ask an admin to resend your setup email.');
+          setError(t('Missing token. Ask an admin to resend your setup email.'));
           setIsVerifying(false);
         }
         return;
@@ -43,13 +47,13 @@ function AccountSetupContent() {
 
         if (!active) return;
         if (!res.success) {
-          setError(res.error || 'Invalid or expired setup link.');
+          setError(mapCommonApiError(locale, res.error || t('Invalid or expired setup link.'), 'Invalid or expired setup link.'));
         } else {
           setVerifiedUser(res.data?.userName || res.data?.email || null);
         }
       } catch (err: any) {
         if (!active) return;
-        setError(err?.message || 'Invalid or expired setup link.');
+        setError(mapCommonApiError(locale, err?.message || t('Invalid or expired setup link.'), 'Invalid or expired setup link.'));
       } finally {
         if (active) setIsVerifying(false);
       }
@@ -59,7 +63,7 @@ function AccountSetupContent() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [token, locale, t]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -67,11 +71,11 @@ function AccountSetupContent() {
     setMessage(null);
 
     if (password.length < 6) {
-      setError('Password must be at least 6 characters long.');
+      setError(t('Password must be at least 6 characters long.'));
       return;
     }
     if (password !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError(t('Passwords do not match.'));
       return;
     }
 
@@ -82,11 +86,11 @@ function AccountSetupContent() {
         body: JSON.stringify({ password, confirmPassword }),
         skipAuth: true
       });
-      setMessage('Account setup complete. You can now log in.');
+      setMessage(t('Account setup complete. You can now log in.'));
       setPassword('');
       setConfirmPassword('');
     } catch (err: any) {
-      setError(err?.message || 'Failed to complete account setup.');
+      setError(mapCommonApiError(locale, err?.message || t('Failed to complete account setup.'), 'Failed to complete account setup.'));
     } finally {
       setIsBusy(false);
     }
@@ -95,15 +99,18 @@ function AccountSetupContent() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
       <form onSubmit={onSubmit} className="w-full max-w-sm bg-white p-6 rounded-lg shadow">
-        <h1 className="text-xl font-semibold mb-2">Account Setup</h1>
+        <div className="mb-4 flex justify-end">
+          <LanguageSwitcher />
+        </div>
+        <h1 className="text-xl font-semibold mb-2">{t('Set Up Account')}</h1>
         {verifiedUser && (
-          <p className="text-sm text-slate-600 mb-4">Completing setup for {verifiedUser}</p>
+          <p className="text-sm text-slate-600 mb-4">{t('Completing setup for {{user}}', { user: verifiedUser })}</p>
         )}
-        {isVerifying && <p className="text-sm text-slate-600 mb-4">Verifying setup link...</p>}
+        {isVerifying && <p className="text-sm text-slate-600 mb-4">{t('Verifying setup link...')}</p>}
 
         {!isVerifying && !error && (
           <>
-            <label className="block text-sm text-gray-700">Password</label>
+            <label className="block text-sm text-gray-700">{t('Password')}</label>
             <input
               className="mt-1 mb-3 w-full border rounded px-3 py-2"
               type="password"
@@ -112,7 +119,7 @@ function AccountSetupContent() {
               minLength={6}
               required
             />
-            <label className="block text-sm text-gray-700">Confirm password</label>
+            <label className="block text-sm text-gray-700">{t('Confirm password')}</label>
             <input
               className="mt-1 mb-4 w-full border rounded px-3 py-2"
               type="password"
@@ -126,7 +133,7 @@ function AccountSetupContent() {
               disabled={isBusy}
               className="w-full bg-black text-white rounded py-2 disabled:opacity-60"
             >
-              {isBusy ? 'Saving...' : 'Complete Setup'}
+              {isBusy ? t('Saving...') : t('Complete Setup')}
             </button>
           </>
         )}
@@ -135,7 +142,7 @@ function AccountSetupContent() {
         {error && <p className="text-red-600 text-sm mt-3">{error}</p>}
 
         <Link href="/login" className="block mt-4 text-sm text-slate-600 hover:text-slate-900">
-          Back to login
+          {t('Back to login')}
         </Link>
       </form>
     </div>
@@ -143,11 +150,12 @@ function AccountSetupContent() {
 }
 
 export default function AccountSetupPage() {
+  const { t } = useI18n();
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
         <div className="w-full max-w-sm bg-white p-6 rounded-lg shadow">
-          <p className="text-sm text-slate-600">Loading...</p>
+          <p className="text-sm text-slate-600">{t('Loading...')}</p>
         </div>
       </div>
     }>

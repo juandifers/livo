@@ -3,8 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { clientFetchJson } from '@/lib/api.client';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import { mapCommonApiError } from '@/lib/i18n/errorMap';
+import LanguageSwitcher from '@/components/i18n/LanguageSwitcher';
 
 export default function ForgotPasswordPage() {
+  const { t, locale } = useI18n();
   const [email, setEmail] = useState('');
   const [isBusy, setIsBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -23,9 +27,9 @@ export default function ForgotPasswordPage() {
         skipAuth: true
       });
 
-      setMessage(res.data || 'If an account with that email exists, a password reset email has been sent.');
+      setMessage(res.data || t('If an account with that email exists, a password reset email has been sent.'));
     } catch (err: any) {
-      setError(err?.message || 'Failed to send password reset email');
+      setError(mapCommonApiError(locale, err?.message || 'Failed to send password reset email', 'Failed to send password reset email'));
     } finally {
       setIsBusy(false);
     }
@@ -34,12 +38,15 @@ export default function ForgotPasswordPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
       <form onSubmit={onSubmit} className="w-full max-w-sm bg-white p-6 rounded-lg shadow">
-        <h1 className="text-xl font-semibold mb-2">Forgot Password</h1>
+        <div className="mb-4 flex justify-end">
+          <LanguageSwitcher />
+        </div>
+        <h1 className="text-xl font-semibold mb-2">{t('Forgot Password')}</h1>
         <p className="text-sm text-slate-600 mb-4">
-          Enter your email and we will send you a password reset link.
+          {t('Enter your email and we will send you a password reset link.')}
         </p>
 
-        <label className="block text-sm text-gray-700">Email</label>
+        <label className="block text-sm text-gray-700">{t('Email')}</label>
         <input
           className="mt-1 mb-4 w-full border rounded px-3 py-2"
           type="email"
@@ -56,11 +63,11 @@ export default function ForgotPasswordPage() {
           disabled={isBusy}
           className="w-full bg-black text-white rounded py-2 disabled:opacity-60"
         >
-          {isBusy ? 'Sending...' : 'Send Reset Link'}
+          {isBusy ? t('Sending...') : t('Send Reset Link')}
         </button>
 
         <Link href="/login" className="block mt-4 text-sm text-slate-600 hover:text-slate-900">
-          Back to login
+          {t('Back to login')}
         </Link>
       </form>
     </div>

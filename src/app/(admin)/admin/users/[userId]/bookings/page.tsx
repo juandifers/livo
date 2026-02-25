@@ -4,6 +4,7 @@ import BookingsTableClient from './BookingsTableClient';
 import AssetCalendarClient from '@/app/(admin)/admin/assets/[assetId]/bookings/AssetCalendarClient';
 import YearSelectorClient from './YearSelectorClient';
 import AnniversaryEditorClient from './AnniversaryEditorClient';
+import { getServerI18n } from '@/lib/i18n/server';
 
 type Booking = {
   _id: string;
@@ -22,13 +23,14 @@ type AllocationResp = { success: boolean; data: { allowedDaysPerYear: number; da
 export const dynamic = 'force-dynamic';
 
 export default async function UserBookingsPage({ params }: { params: Promise<{ userId: string }> }) {
+  const { t } = await getServerI18n();
   const { userId } = await params;
   // Use GET /api/bookings?user=<id>
   const res = await serverFetchJson<BookingsResp>(`/bookings?user=${encodeURIComponent(userId)}`);
   const bookings = res.data || [];
 
   // Fetch user for header label
-  let userLabel = 'User';
+  let userLabel = t('User');
   try {
     const ures = await serverFetchJson<UserResp>(`/users/${encodeURIComponent(userId)}`);
     const u = ures?.data;
@@ -54,9 +56,9 @@ export default async function UserBookingsPage({ params }: { params: Promise<{ u
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold mb-4">{userLabel} Bookings</h1>
+      <h1 className="text-2xl font-semibold mb-4">{userLabel} {t('Bookings')}</h1>
       <div className="mb-4">
-        <Link href="/admin/users" className="text-blue-600 hover:underline">← Back to Users</Link>
+        <Link href="/admin/users" className="text-blue-600 hover:underline">← {t('Back to Users')}</Link>
       </div>
       <BookingsTableClient bookings={bookings} />
 
@@ -66,9 +68,9 @@ export default async function UserBookingsPage({ params }: { params: Promise<{ u
           return (
             <div key={asset._id} className="rounded-xl border bg-white shadow-sm p-4">
               <div className="flex items-center justify-between mb-4">
-                <div className="font-semibold">{asset.name || 'Asset'} Allocation Summary</div>
+                <div className="font-semibold">{asset.name || t('Asset')} {t('Allocation Summary')}</div>
                 <div className="text-xs text-slate-600">
-                  Rolling anniversary allocation window (12 months)
+                  {t('Rolling anniversary allocation window (12 months)')}
                 </div>
               </div>
               
@@ -94,7 +96,7 @@ export default async function UserBookingsPage({ params }: { params: Promise<{ u
 
               {/* Calendar (user's point of view for this asset) */}
               <div className="mt-6">
-                <div className="font-medium mb-2">Calendar</div>
+                <div className="font-medium mb-2">{t('Calendar')}</div>
                 <AssetCalendarClient assetId={asset._id} viewUserId={userId} />
               </div>
             </div>
@@ -104,5 +106,3 @@ export default async function UserBookingsPage({ params }: { params: Promise<{ u
     </div>
   );
 }
-
-

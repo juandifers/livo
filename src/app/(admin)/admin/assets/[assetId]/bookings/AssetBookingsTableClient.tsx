@@ -1,6 +1,7 @@
 'use client';
 import { useMemo, useState } from 'react';
 import CancelBookingButton from '../../../users/[userId]/bookings/CancelBookingButton';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type Booking = {
   _id: string;
@@ -12,6 +13,7 @@ type Booking = {
 };
 
 export default function AssetBookingsTableClient({ bookings }: { bookings: Booking[] }) {
+  const { t, formatDate } = useI18n();
   const [show, setShow] = useState<'all' | 'upcoming' | 'past'>('all');
   const [sortBy, setSortBy] = useState<'user' | 'start' | 'end'>('start');
   const [dir, setDir] = useState<'asc' | 'desc'>('asc');
@@ -77,13 +79,13 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
-        <label className="text-sm">Show</label>
+        <label className="text-sm">{t('Show')}</label>
         <select value={show} onChange={(e) => setShow(e.target.value as any)} className="border rounded-lg px-2 py-1 bg-white shadow-sm">
-          <option value="all">All</option>
-          <option value="upcoming">Upcoming</option>
-          <option value="past">Past</option>
+          <option value="all">{t('All')}</option>
+          <option value="upcoming">{t('Upcoming')}</option>
+          <option value="past">{t('Past')}</option>
         </select>
-        <div className="ml-auto text-sm text-slate-500">{sorted.length} bookings</div>
+        <div className="ml-auto text-sm text-slate-500">{sorted.length} {t('bookings')}</div>
       </div>
 
       <div className="overflow-auto rounded-xl border bg-white shadow-sm">
@@ -91,17 +93,17 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
           <thead className="bg-slate-50 border-b">
             <tr>
               <th className="text-left p-3 cursor-pointer" onClick={() => toggleSort('user')}>
-                User {sortBy === 'user' ? (dir === 'asc' ? '▲' : '▼') : ''}
+                {t('User')} {sortBy === 'user' ? (dir === 'asc' ? '▲' : '▼') : ''}
               </th>
               <th className="text-left p-3 cursor-pointer" onClick={() => toggleSort('start')}>
-                Start {sortBy === 'start' ? (dir === 'asc' ? '▲' : '▼') : ''}
+                {t('Start')} {sortBy === 'start' ? (dir === 'asc' ? '▲' : '▼') : ''}
               </th>
               <th className="text-left p-3 cursor-pointer" onClick={() => toggleSort('end')}>
-                End {sortBy === 'end' ? (dir === 'asc' ? '▲' : '▼') : ''}
+                {t('End')} {sortBy === 'end' ? (dir === 'asc' ? '▲' : '▼') : ''}
               </th>
-              <th className="text-left p-3">Status</th>
-              <th className="text-left p-3">Short-term</th>
-              <th className="text-left p-3">Actions</th>
+              <th className="text-left p-3">{t('Status')}</th>
+              <th className="text-left p-3">{t('Short-term')}</th>
+              <th className="text-left p-3">{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -114,20 +116,20 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
               } else if (b.user) {
                 userLabel = String(b.user);
               }
-              return (
+                return (
                 <tr key={b._id} className="border-b last:border-0">
                   <td className="p-3 font-medium text-slate-800">{userLabel}</td>
-                  <td className="p-3">{parseDateOnly(b.startDate).toLocaleDateString()}</td>
-                  <td className="p-3">{parseDateOnly(b.endDate).toLocaleDateString()}</td>
+                  <td className="p-3">{formatDate(parseDateOnly(b.startDate))}</td>
+                  <td className="p-3">{formatDate(parseDateOnly(b.endDate))}</td>
                   <td className="p-3">{b.status}</td>
-                  <td className="p-3">{b.isShortTerm ? 'Yes' : 'No'}</td>
+                  <td className="p-3">{b.isShortTerm ? t('Yes') : t('No')}</td>
                   <td className="p-3">{b.status !== 'cancelled' ? (<CancelBookingButton bookingId={b._id} />) : (<span className="text-gray-500">—</span>)}</td>
                 </tr>
               );
             })}
             {displayed.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-slate-500">No bookings found</td>
+                <td colSpan={6} className="p-6 text-center text-slate-500">{t('No bookings found')}</td>
               </tr>
             )}
           </tbody>
@@ -138,7 +140,7 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
               onClick={() => setShowAll(!showAll)}
               className="text-sm text-slate-600 hover:text-slate-900 font-medium underline"
             >
-              {showAll ? `Show less (viewing all ${sorted.length})` : `Show more (${sorted.length - 8} hidden)`}
+              {showAll ? t('Show less (viewing all {{count}})', { count: sorted.length }) : t('Show more ({{count}} hidden)', { count: sorted.length - 8 })}
             </button>
           </div>
         )}
@@ -146,5 +148,4 @@ export default function AssetBookingsTableClient({ bookings }: { bookings: Booki
     </div>
   );
 }
-
 

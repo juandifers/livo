@@ -1,6 +1,8 @@
 'use client';
 import { useState } from 'react';
 import Cookies from 'js-cookie';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import { mapCommonApiError } from '@/lib/i18n/errorMap';
 
 type Photo = {
   url: string; // URL for existing photos
@@ -17,6 +19,7 @@ export default function PhotoManager({
   initialPhotos?: string[];
   onPhotosChange?: (photos: string[]) => void;
 }) {
+  const { t, locale } = useI18n();
   const [photos, setPhotos] = useState<Photo[]>(
     initialPhotos.map(url => ({ url }))
   );
@@ -34,7 +37,7 @@ export default function PhotoManager({
     });
     
     if (validFiles.length !== files.length) {
-      setError('Some files were rejected. Only images under 4MB are allowed.');
+      setError(t('Some files were rejected. Only images under 4MB are allowed.'));
     }
     
     const newPhotos = validFiles.map(file => ({
@@ -80,7 +83,7 @@ export default function PhotoManager({
 
         if (!response.ok) {
           const body = await response.text().catch(() => '');
-          throw new Error(body || 'Upload failed');
+          throw new Error(body || t('Upload failed'));
         }
 
         const result = await response.json();
@@ -101,12 +104,12 @@ export default function PhotoManager({
         onPhotosChange(updated.map(p => p.url));
       }
       
-      alert('Photos uploaded successfully');
+      alert(t('Photos uploaded successfully'));
       
       // Reload page to show updated photos
       window.location.reload();
     } catch (err: any) {
-      setError(err.message || 'Upload failed');
+      setError(mapCommonApiError(locale, err?.message || '', 'Upload failed'));
     } finally {
       setUploading(false);
     }
@@ -144,14 +147,14 @@ export default function PhotoManager({
 
       if (!response.ok) {
         const body = await response.text().catch(() => '');
-        throw new Error(body || 'Failed to delete photo');
+        throw new Error(body || t('Failed to delete photo'));
       }
 
       const updated = photos.filter((_, i) => i !== index);
       setPhotos(updated);
       if (onPhotosChange) onPhotosChange(updated.map(p => p.url).filter(Boolean));
     } catch (err: any) {
-      setError(err?.message || 'Failed to delete photo');
+      setError(mapCommonApiError(locale, err?.message || '', 'Failed to delete photo'));
     } finally {
       setDeletingIndex(null);
     }
@@ -169,7 +172,7 @@ export default function PhotoManager({
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <label className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 cursor-pointer">
-          Select Photos
+          {t('Select Photos')}
           <input
             type="file"
             accept="image/*"
@@ -184,7 +187,9 @@ export default function PhotoManager({
             disabled={uploading}
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
           >
-            {uploading ? 'Uploading...' : `Upload ${photos.filter(p => p.file).length} photo(s)`}
+            {uploading
+              ? t('Uploading...')
+              : t('Upload {{count}} photo(s)', { count: photos.filter(p => p.file).length })}
           </button>
         )}
       </div>
@@ -201,7 +206,7 @@ export default function PhotoManager({
           <div key={idx} className="relative group">
             <img
               src={getPhotoUrl(photo)}
-              alt={`Asset photo ${idx + 1}`}
+              alt={t('Asset photo {{index}}', { index: idx + 1 })}
               className="w-full h-32 object-cover rounded-lg border"
               onError={(e) => {
                 // Fallback to placeholder on error
@@ -217,7 +222,7 @@ export default function PhotoManager({
             </button>
             {photo.file && (
               <div className="absolute bottom-1 left-1 bg-amber-500 text-white text-xs px-2 py-1 rounded">
-                New
+                {t('New')}
               </div>
             )}
           </div>
@@ -226,7 +231,7 @@ export default function PhotoManager({
       
       {photos.length === 0 && (
         <div className="text-center py-8 text-slate-500 border-2 border-dashed rounded-lg">
-          No photos yet. Click &quot;Select Photos&quot; to upload.
+          {t('No photos yet. Click "Select Photos" to upload.')}
         </div>
       )}
     </div>

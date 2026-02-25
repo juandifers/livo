@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { serverFetchJson } from '@/lib/api.server';
+import { getServerI18n } from '@/lib/i18n/server';
 import PhotoManager from './PhotoManager';
 import AssetEditForm from './AssetEditForm';
 
@@ -22,6 +23,7 @@ export default async function AssetEditPage({
   params: Promise<{ assetId: string }> 
 }) {
   const { assetId } = await params;
+  const { t } = await getServerI18n();
   
   let asset: Asset | null = null;
   try {
@@ -32,9 +34,9 @@ export default async function AssetEditPage({
   } catch (error) {
     return (
       <div className="p-4">
-        <div className="text-red-600 mb-4">Asset not found</div>
+        <div className="text-red-600 mb-4">{t('Asset not found')}</div>
         <Link href="/admin/assets" className="text-sm text-slate-600 hover:text-slate-900">
-          ← Back to Assets
+          {t('← Back to Assets')}
         </Link>
       </div>
     );
@@ -43,20 +45,20 @@ export default async function AssetEditPage({
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Edit Asset: {asset.name}</h1>
+        <h1 className="text-2xl font-semibold">{t('Edit Asset: {{name}}', { name: asset.name })}</h1>
         <Link href="/admin/assets" className="text-sm text-slate-600 hover:text-slate-900">
-          ← Back to Assets
+          {t('← Back to Assets')}
         </Link>
       </div>
       
       <div className="space-y-6">
         <div className="rounded-xl border bg-white shadow-sm p-4">
-          <h2 className="font-semibold mb-3">Photos</h2>
+          <h2 className="font-semibold mb-3">{t('Photos')}</h2>
           <PhotoManager assetId={assetId} initialPhotos={asset.photos || []} />
         </div>
         
         <div className="rounded-xl border bg-white shadow-sm p-4">
-          <h2 className="font-semibold mb-3">Asset Details</h2>
+          <h2 className="font-semibold mb-3">{t('Asset Details')}</h2>
           <AssetEditForm asset={asset} />
         </div>
       </div>
