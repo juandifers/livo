@@ -95,7 +95,6 @@ const getUserAllocation = async (userId, assetId) => {
           extraDaysUsed: 0,
           extraDaysRemaining: 40,
           activeBookings: 1,
-          activeBookingsRemaining: 23,
           currentBookings: [],
           futureBookings: []
         }

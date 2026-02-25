@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAuth } from '../context/AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useI18n } from '../i18n';
 
 // Import screen components (we'll create these next)
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -41,7 +42,7 @@ const AuthNavigator = () => (
 
 // Assets stack for nested navigation
 const AssetsStack = createNativeStackNavigator();
-const AssetsStackNavigator = () => (
+const AssetsStackNavigator = ({ t }) => (
   <AssetsStack.Navigator>
     <AssetsStack.Screen 
       name="AssetsList" 
@@ -52,7 +53,7 @@ const AssetsStackNavigator = () => (
       name="AssetDetail" 
       component={AssetDetailScreen}
       options={({ route }) => ({ 
-        title: route.params?.asset?.name || 'Asset Details',
+        title: route.params?.asset?.name || t('Asset Details'),
         headerStyle: {
           backgroundColor: '#1E4640',
         },
@@ -71,7 +72,7 @@ const AssetsStackNavigator = () => (
 
 // Bookings stack for nested navigation
 const BookingsStack = createNativeStackNavigator();
-const BookingsStackNavigator = () => (
+const BookingsStackNavigator = ({ t }) => (
   <BookingsStack.Navigator>
     <BookingsStack.Screen 
       name="BookingsList" 
@@ -82,7 +83,7 @@ const BookingsStackNavigator = () => (
       name="BookingDetail" 
       component={BookingDetailScreen}
       options={{ 
-        title: 'Booking Details',
+        title: t('Booking Details'),
         headerStyle: {
           backgroundColor: '#1E4640',
         },
@@ -93,7 +94,7 @@ const BookingsStackNavigator = () => (
       name="SchedulingRules" 
       component={SchedulingRulesScreen}
       options={{ 
-        title: 'Scheduling Rules',
+        title: t('Scheduling Rules'),
         headerStyle: { backgroundColor: '#1E4640' },
         headerTintColor: '#fff'
       }}
@@ -102,7 +103,7 @@ const BookingsStackNavigator = () => (
 );
 
 // Bottom tab navigator for main app screens
-const TabNavigator = () => (
+const TabNavigator = ({ t }) => (
   <AppTab.Navigator
     screenOptions={{
       headerShown: false,
@@ -135,7 +136,7 @@ const TabNavigator = () => (
       name="HomeTab" 
       component={HomeScreen} 
       options={{
-        tabBarLabel: 'Home',
+        tabBarLabel: t('Home'),
         tabBarIcon: ({ color }) => (
           <MaterialIcons name="home" size={28} color={color} />
         ),
@@ -143,9 +144,9 @@ const TabNavigator = () => (
     />
     <AppTab.Screen 
       name="BookingsTab" 
-      component={BookingsStackNavigator} 
+      component={() => <BookingsStackNavigator t={t} />} 
       options={{
-        tabBarLabel: 'Stays',
+        tabBarLabel: t('Stays'),
         tabBarIcon: ({ color }) => (
           <MaterialIcons name="description" size={28} color={color} />
         ),
@@ -155,7 +156,7 @@ const TabNavigator = () => (
       name="BookTab" 
       component={CreateBookingScreen} 
       options={{
-        tabBarLabel: 'Book',
+        tabBarLabel: t('Book'),
         tabBarIcon: ({ color }) => (
           <MaterialIcons name="calendar-today" size={28} color={color} />
         ),
@@ -165,7 +166,7 @@ const TabNavigator = () => (
       name="AlertsTab" 
       component={LoadingScreen} // Placeholder for Alerts screen
       options={{
-        tabBarLabel: 'Alerts',
+        tabBarLabel: t('Alerts'),
         tabBarIcon: ({ color }) => (
           <MaterialIcons name="notifications" size={28} color={color} />
         ),
@@ -175,7 +176,7 @@ const TabNavigator = () => (
       name="ProfileTab" 
       component={ProfileScreen} 
       options={{
-        tabBarLabel: 'Setting',
+        tabBarLabel: t('Setting'),
         tabBarIcon: ({ color }) => (
           <MaterialIcons name="settings" size={28} color={color} />
         ),
@@ -187,6 +188,7 @@ const TabNavigator = () => (
 // Main app navigator
 const AppNavigator = () => {
   const { isLoading, isAuthenticated } = useAuth();
+  const { t } = useI18n();
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -195,8 +197,8 @@ const AppNavigator = () => {
   // Use the MainStack navigator to combine tabs with other screens
   const MainNavigator = () => (
     <MainStack.Navigator screenOptions={{ headerShown: false }}>
-      <MainStack.Screen name="Tabs" component={TabNavigator} />
-      <MainStack.Screen name="Assets" component={AssetsStackNavigator} />
+      <MainStack.Screen name="Tabs" component={() => <TabNavigator t={t} />} />
+      <MainStack.Screen name="Assets" component={() => <AssetsStackNavigator t={t} />} />
       <MainStack.Screen name="BookingDetail" component={BookingDetailScreen} />
       <MainStack.Screen name="CancellationPolicies" component={CancellationPoliciesScreen} />
       <MainStack.Screen name="UserProfile" component={UserProfileScreen} />

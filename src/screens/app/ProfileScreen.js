@@ -12,22 +12,24 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../i18n';
 
 const ProfileScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
+  const { t, locale, setLocale } = useI18n();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
   const handleLogout = () => {
     Alert.alert(
-      'Confirm Logout',
-      'Are you sure you want to log out?',
+      t('Confirm Logout'),
+      t('Are you sure you want to log out?'),
       [
         {
-          text: 'Cancel',
+          text: t('Cancel'),
           style: 'cancel',
         },
         {
-          text: 'Logout',
+          text: t('Logout'),
           onPress: async () => {
             await logout();
           },
@@ -57,14 +59,33 @@ const ProfileScreen = ({ navigation }) => {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <View style={styles.container}>
-        <Text style={styles.headerTitle}>Settings</Text>
+        <Text style={styles.headerTitle}>{t('Settings')}</Text>
         
         <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.contentContainer}>
-          {renderSettingItem('Profile', () => navigation.navigate('UserProfile'))}
+          {renderSettingItem(t('Profile'), () => navigation.navigate('UserProfile'))}
           
-          {renderSettingItem('Change Password', () => navigation.navigate('ChangePassword'))}
+          {renderSettingItem(t('Change Password'), () => navigation.navigate('ChangePassword'))}
+
+          {renderSettingItem(
+            t('Language'),
+            () => setLocale(locale === 'en' ? 'es' : 'en'),
+            <View style={styles.languageSwitchRow}>
+              <TouchableOpacity
+                onPress={() => setLocale('en')}
+                style={[styles.languageOption, locale === 'en' && styles.languageOptionActive]}
+              >
+                <Text style={[styles.languageOptionText, locale === 'en' && styles.languageOptionTextActive]}>EN</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setLocale('es')}
+                style={[styles.languageOption, locale === 'es' && styles.languageOptionActive]}
+              >
+                <Text style={[styles.languageOptionText, locale === 'es' && styles.languageOptionTextActive]}>ES</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           
-          {renderSettingItem('Notifications', () => toggleNotifications(), 
+          {renderSettingItem(t('Notifications'), () => toggleNotifications(), 
             <Switch 
               value={notificationsEnabled}
               onValueChange={toggleNotifications}
@@ -73,17 +94,17 @@ const ProfileScreen = ({ navigation }) => {
             />
           )}
           
-          {renderSettingItem('FAQ', () => console.log('FAQ pressed'))}
+          {renderSettingItem(t('FAQ'), () => console.log('FAQ pressed'))}
           
-          {renderSettingItem('Contact Us', () => console.log('Contact Us pressed'))}
+          {renderSettingItem(t('Contact Us'), () => console.log('Contact Us pressed'))}
           
-          {renderSettingItem('Terms & Conditions', () => console.log('Terms pressed'))}
+          {renderSettingItem(t('Terms & Conditions'), () => console.log('Terms pressed'))}
           
-          {renderSettingItem('Privacy Policy', () => console.log('Privacy pressed'))}
+          {renderSettingItem(t('Privacy Policy'), () => console.log('Privacy pressed'))}
           
-          {renderSettingItem('API Test Console', () => navigation.navigate('ApiTest'))}
+          {renderSettingItem(t('API Test Console'), () => navigation.navigate('ApiTest'))}
           
-          {renderSettingItem('Logout', handleLogout)}
+          {renderSettingItem(t('Logout'), handleLogout)}
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -128,6 +149,30 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#333',
     fontWeight: '500',
+  },
+  languageSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  languageOption: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: '#fff',
+  },
+  languageOptionActive: {
+    backgroundColor: '#1E4640',
+    borderColor: '#1E4640',
+  },
+  languageOptionText: {
+    color: '#1E4640',
+    fontWeight: '600',
+  },
+  languageOptionTextActive: {
+    color: '#fff',
   },
 });
 

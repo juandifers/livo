@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -16,26 +16,31 @@ import * as Yup from 'yup';
 import { useAuth } from '../../context/AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { DEV_MODE, TEST_CREDENTIALS } from '../../config';
-
-const validationSchema = Yup.object().shape({
-  email: Yup.string()
-    .email('Please enter a valid email')
-    .required('Email is required'),
-  password: Yup.string()
-    .required('Password is required')
-    .min(6, 'Password must be at least 6 characters'),
-});
+import { useI18n } from '../../i18n';
 
 const LoginScreen = ({ navigation }) => {
   const { login, isSigningIn } = useAuth();
+  const { t, locale, setLocale, mapApiError } = useI18n();
   const [secureTextEntry, setSecureTextEntry] = useState(true);
   const [rememberMe, setRememberMe] = useState(false);
+  const validationSchema = useMemo(
+    () =>
+      Yup.object().shape({
+        email: Yup.string()
+          .email(t('Please enter a valid email'))
+          .required(t('Email is required')),
+        password: Yup.string()
+          .required(t('Password is required'))
+          .min(6, t('Password must be at least 6 characters')),
+      }),
+    [t]
+  );
 
   const handleLogin = async (values) => {
     const result = await login(values.email, values.password);
     
     if (!result.success) {
-      Alert.alert('Login Failed', result.error);
+      Alert.alert(t('Login Failed'), mapApiError(result.error, 'Login Failed'));
     }
   };
 
@@ -51,16 +56,40 @@ const LoginScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         {/* Language Selector */}
         <View style={styles.languageContainer}>
-          <TouchableOpacity style={styles.languageButton}>
-            <MaterialIcons name="language" size={20} color="#FFF" style={styles.flagIcon} />
-            <Text style={styles.languageText}>English</Text>
+          <TouchableOpacity
+            style={[styles.languageButton, locale === 'en' && styles.languageButtonActive]}
+            onPress={() => setLocale('en')}
+          >
+            <MaterialIcons
+              name="language"
+              size={20}
+              color={locale === 'en' ? '#FFF' : '#1E4640'}
+              style={styles.flagIcon}
+            />
+            <Text style={[styles.languageText, locale === 'en' ? styles.languageTextActive : styles.languageTextInactive]}>
+              EN
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.languageButton, locale === 'es' && styles.languageButtonActive]}
+            onPress={() => setLocale('es')}
+          >
+            <MaterialIcons
+              name="language"
+              size={20}
+              color={locale === 'es' ? '#FFF' : '#1E4640'}
+              style={styles.flagIcon}
+            />
+            <Text style={[styles.languageText, locale === 'es' ? styles.languageTextActive : styles.languageTextInactive]}>
+              ES
+            </Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.headerContainer}>
-          <Text style={styles.headerText}>Sign in</Text>
+          <Text style={styles.headerText}>{t('Sign in')}</Text>
           <Text style={styles.subHeaderText}>
-            Enter your details below
+            {t('Enter your details below')}
           </Text>
         </View>
         
@@ -76,7 +105,7 @@ const LoginScreen = ({ navigation }) => {
             <View style={styles.formContainer}>
               <View style={styles.inputContainer}>
                 <TextInput
-                  placeholder="Enter Email"
+                  placeholder={t('Enter Email')}
                   value={values.email}
                   onChangeText={handleChange('email')}
                   onBlur={handleBlur('email')}
@@ -91,7 +120,7 @@ const LoginScreen = ({ navigation }) => {
               
               <View style={styles.inputContainer}>
                 <TextInput
-                  placeholder="Password"
+                  placeholder={t('Password')}
                   value={values.password}
                   onChangeText={handleChange('password')}
                   onBlur={handleBlur('password')}
@@ -123,13 +152,13 @@ const LoginScreen = ({ navigation }) => {
                       <MaterialIcons name="check" size={18} color="#000" />
                     )}
                   </View>
-                  <Text style={styles.rememberMeText}>Remember me</Text>
+                  <Text style={styles.rememberMeText}>{t('Remember me')}</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
                   onPress={() => navigation.navigate('ForgotPassword')}
                 >
-                  <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                  <Text style={styles.forgotPasswordText}>{t('Forgot Password?')}</Text>
                 </TouchableOpacity>
               </View>
               
@@ -139,18 +168,21 @@ const LoginScreen = ({ navigation }) => {
                 disabled={isSigningIn}
               >
                 <Text style={styles.loginButtonText}>
-                  {isSigningIn ? 'Signing in...' : 'Sign in'}
+                  {isSigningIn ? t('Signing in...') : t('Sign in')}
                 </Text>
               </TouchableOpacity>
 
               {!DEV_MODE && (
                 <View style={styles.devModeContainer}>
-                  <Text style={styles.devModeText}>REAL DATA MODE</Text>
+                  <Text style={styles.devModeText}>{t('REAL DATA MODE')}</Text>
                   <Text style={styles.devModeCredentials}>
-                    Connected to MongoDB with demo data
+                    {t('Connected to MongoDB with demo data')}
                   </Text>
                   <Text style={styles.devModeNote}>
-                    Using: {TEST_CREDENTIALS.email} / {TEST_CREDENTIALS.password}
+                    {t('Using: {{email}} / {{password}}', {
+                      email: TEST_CREDENTIALS.email,
+                      password: TEST_CREDENTIALS.password,
+                    })}
                   </Text>
                 </View>
               )}
@@ -175,21 +207,32 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     marginTop: 10,
     marginBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
   },
   languageButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E4640',
+    backgroundColor: '#E5F2EF',
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
+  },
+  languageButtonActive: {
+    backgroundColor: '#1E4640',
   },
   flagIcon: {
     marginRight: 8,
   },
   languageText: {
-    color: '#FFFFFF',
     fontSize: 16,
+  },
+  languageTextActive: {
+    color: '#FFFFFF',
+  },
+  languageTextInactive: {
+    color: '#1E4640',
   },
   headerContainer: {
     marginTop: 40,

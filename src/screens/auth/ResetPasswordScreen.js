@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -13,25 +13,30 @@ import { TextInput, Button } from 'react-native-paper';
 import { Formik } from 'formik';
 import * as Yup from 'yup';
 import { authApi } from '../../api';
-
-const validationSchema = Yup.object().shape({
-  password: Yup.string()
-    .required('Password is required')
-    .min(6, 'Password must be at least 6 characters'),
-  confirmPassword: Yup.string()
-    .required('Confirm password is required')
-    .oneOf([Yup.ref('password')], 'Passwords must match'),
-});
+import { useI18n } from '../../i18n';
 
 const ResetPasswordScreen = ({ route, navigation }) => {
   const { token } = route.params || {};
+  const { t, mapApiError } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
   const [secureTextEntry, setSecureTextEntry] = useState(true);
   const [secureConfirmTextEntry, setSecureConfirmTextEntry] = useState(true);
+  const validationSchema = useMemo(
+    () =>
+      Yup.object().shape({
+        password: Yup.string()
+          .required(t('Password is required'))
+          .min(6, t('Password must be at least 6 characters')),
+        confirmPassword: Yup.string()
+          .required(t('Confirm password is required'))
+          .oneOf([Yup.ref('password')], t('Passwords must match')),
+      }),
+    [t]
+  );
 
   const handleResetPassword = async (values) => {
     if (!token) {
-      Alert.alert('Error', 'Reset token is missing');
+      Alert.alert(t('Error'), t('Reset token is missing'));
       return;
     }
 
@@ -45,12 +50,12 @@ const ResetPasswordScreen = ({ route, navigation }) => {
     
     if (result.success) {
       Alert.alert(
-        'Password Reset Successful',
-        'Your password has been reset successfully. You can now log in with your new password.',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        t('Password Reset Successful'),
+        t('Your password has been reset successfully. You can now log in with your new password.'),
+        [{ text: t('OK'), onPress: () => navigation.navigate('Login') }]
       );
     } else {
-      Alert.alert('Error', result.error || 'Failed to reset password');
+      Alert.alert(t('Error'), mapApiError(result.error || 'Failed to reset password', 'Failed to reset password'));
     }
   };
 
@@ -64,13 +69,13 @@ const ResetPasswordScreen = ({ route, navigation }) => {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backButtonText}>← Back to Login</Text>
+          <Text style={styles.backButtonText}>{t('← Back to Login')}</Text>
         </TouchableOpacity>
         
         <View style={styles.headerContainer}>
-          <Text style={styles.headerText}>Reset Password</Text>
+          <Text style={styles.headerText}>{t('Reset Password')}</Text>
           <Text style={styles.subHeaderText}>
-            Please enter your new password below.
+            {t('Please enter your new password below.')}
           </Text>
         </View>
         
@@ -82,7 +87,7 @@ const ResetPasswordScreen = ({ route, navigation }) => {
           {({ handleChange, handleBlur, handleSubmit, values, errors, touched }) => (
             <View style={styles.formContainer}>
               <TextInput
-                label="New Password"
+                label={t('New Password')}
                 value={values.password}
                 onChangeText={handleChange('password')}
                 onBlur={handleBlur('password')}
@@ -101,7 +106,7 @@ const ResetPasswordScreen = ({ route, navigation }) => {
               )}
               
               <TextInput
-                label="Confirm New Password"
+                label={t('Confirm New Password')}
                 value={values.confirmPassword}
                 onChangeText={handleChange('confirmPassword')}
                 onBlur={handleBlur('confirmPassword')}
@@ -126,7 +131,7 @@ const ResetPasswordScreen = ({ route, navigation }) => {
                 loading={isLoading}
                 disabled={isLoading}
               >
-                Reset Password
+                {t('Reset Password')}
               </Button>
             </View>
           )}

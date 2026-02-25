@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -13,22 +13,27 @@ import { TextInput, Button } from 'react-native-paper';
 import { Formik } from 'formik';
 import * as Yup from 'yup';
 import { authApi } from '../../api';
-
-const validationSchema = Yup.object().shape({
-  currentPassword: Yup.string().required('Current password is required'),
-  newPassword: Yup.string()
-    .required('New password is required')
-    .min(6, 'New password must be at least 6 characters'),
-  confirmNewPassword: Yup.string()
-    .required('Confirm new password is required')
-    .oneOf([Yup.ref('newPassword')], 'Passwords must match'),
-});
+import { useI18n } from '../../i18n';
 
 const ChangePasswordScreen = ({ navigation }) => {
+  const { t, mapApiError } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
   const [secureCurrent, setSecureCurrent] = useState(true);
   const [secureNew, setSecureNew] = useState(true);
   const [secureConfirm, setSecureConfirm] = useState(true);
+  const validationSchema = useMemo(
+    () =>
+      Yup.object().shape({
+        currentPassword: Yup.string().required(t('Current password is required')),
+        newPassword: Yup.string()
+          .required(t('New password is required'))
+          .min(6, t('Password must be at least 6 characters')),
+        confirmNewPassword: Yup.string()
+          .required(t('Confirm new password is required'))
+          .oneOf([Yup.ref('newPassword')], t('Passwords must match')),
+      }),
+    [t]
+  );
 
   const handleChangePassword = async (values) => {
     setIsLoading(true);
@@ -41,12 +46,12 @@ const ChangePasswordScreen = ({ navigation }) => {
 
     if (result.success) {
       Alert.alert(
-        'Password Updated',
-        'Your password has been changed successfully.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
+        t('Password Updated'),
+        t('Your password has been changed successfully.'),
+        [{ text: t('OK'), onPress: () => navigation.goBack() }]
       );
     } else {
-      Alert.alert('Error', result.error || 'Failed to change password');
+      Alert.alert(t('Error'), mapApiError(result.error || 'Failed to change password', 'Failed to change password'));
     }
   };
 
@@ -60,13 +65,13 @@ const ChangePasswordScreen = ({ navigation }) => {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backButtonText}>← Back to Settings</Text>
+          <Text style={styles.backButtonText}>{t('← Back to Settings')}</Text>
         </TouchableOpacity>
 
         <View style={styles.headerContainer}>
-          <Text style={styles.headerText}>Change Password</Text>
+          <Text style={styles.headerText}>{t('Change Password')}</Text>
           <Text style={styles.subHeaderText}>
-            Enter your current password and choose a new one.
+            {t('Enter your current password and choose a new one.')}
           </Text>
         </View>
 
@@ -82,7 +87,7 @@ const ChangePasswordScreen = ({ navigation }) => {
           {({ handleChange, handleBlur, handleSubmit, values, errors, touched }) => (
             <View style={styles.formContainer}>
               <TextInput
-                label="Current Password"
+                label={t('Current Password')}
                 value={values.currentPassword}
                 onChangeText={handleChange('currentPassword')}
                 onBlur={handleBlur('currentPassword')}
@@ -101,7 +106,7 @@ const ChangePasswordScreen = ({ navigation }) => {
               )}
 
               <TextInput
-                label="New Password"
+                label={t('New Password')}
                 value={values.newPassword}
                 onChangeText={handleChange('newPassword')}
                 onBlur={handleBlur('newPassword')}
@@ -120,7 +125,7 @@ const ChangePasswordScreen = ({ navigation }) => {
               )}
 
               <TextInput
-                label="Confirm New Password"
+                label={t('Confirm New Password')}
                 value={values.confirmNewPassword}
                 onChangeText={handleChange('confirmNewPassword')}
                 onBlur={handleBlur('confirmNewPassword')}
@@ -145,7 +150,7 @@ const ChangePasswordScreen = ({ navigation }) => {
                 loading={isLoading}
                 disabled={isLoading}
               >
-                Update Password
+                {t('Update Password')}
               </Button>
             </View>
           )}

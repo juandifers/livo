@@ -15,10 +15,12 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { assetApi, bookingApi, authApi } from '../../api';
+import { useI18n } from '../../i18n';
 
 const { width } = Dimensions.get('window');
 
 const AssetDetailScreen = ({ route, navigation }) => {
+  const { t } = useI18n();
   const { assetId, asset: initialAsset } = route.params;
   const [asset, setAsset] = useState(initialAsset || null);
   const [bookings, setBookings] = useState([]);
@@ -151,9 +153,9 @@ const AssetDetailScreen = ({ route, navigation }) => {
       const percentage = userAllocation.sharePercentage;
       // Convert percentage to eighths: 12.5% = 1/8, 25% = 2/8, 50% = 4/8, etc.
       const eighths = Math.round(percentage / 12.5);
-      return `${percentage}% (${eighths}/8 Ownership)`;
+      return t('{{percentage}}% ({{eighths}}/8 Ownership)', { percentage, eighths });
     }
-    return 'No ownership data'; // Default value
+    return t('No ownership data'); // Default value
   };
 
   // Get used days from real data
@@ -177,7 +179,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
   };
 
   const getWindowLabelFromAllocation = (key) => {
-    if (!userAllocation) return 'Loading…';
+    if (!userAllocation) return t('Loading...');
 
     // Prefer top-level window ranges (backend now returns these).
     const top =
@@ -190,7 +192,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
     const per = key === 'next' ? userAllocation?.nextYear : userAllocation?.currentYear;
     if (per?.windowStart && per?.windowEnd) return `${per.windowStart} → ${per.windowEnd}`;
 
-    return 'Loading…';
+    return t('Loading...');
   };
 
   const getSelectedWindowLabel = () => {
@@ -280,36 +282,36 @@ const AssetDetailScreen = ({ route, navigation }) => {
           
           {/* Ownership */}
           <Text style={styles.ownershipText}>
-            {isLoadingAllocation ? 'Loading...' : getOwnershipDisplay()}
+            {isLoadingAllocation ? t('Loading...') : getOwnershipDisplay()}
           </Text>
           
           {/* Category */}
           <View style={styles.detailSection}>
-            <Text style={styles.sectionTitle}>Category</Text>
+            <Text style={styles.sectionTitle}>{t('Category')}</Text>
             <Text style={styles.breadcrumbText}>
-              {asset.type === 'boat' ? 'Boats' : 'Homes'}
+              {asset.type === 'boat' ? t('Boats') : t('Homes')}
             </Text>
           </View>
           
           {/* Location */}
           <View style={styles.detailSection}>
             <View style={styles.locationHeader}>
-              <Text style={styles.sectionTitle}>Location Address</Text>
+              <Text style={styles.sectionTitle}>{t('Location Address')}</Text>
               <TouchableOpacity style={styles.mapButton}>
-                <Text style={styles.mapButtonText}>SHOW ON MAP</Text>
+                <Text style={styles.mapButtonText}>{t('SHOW ON MAP')}</Text>
                 <MaterialIcons name="chevron-right" size={24} color="#000" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.sectionValue}>{asset.location || 'Mesa de Yeguas'}</Text>
+            <Text style={styles.sectionValue}>{asset.location || t('Unknown Location')}</Text>
           </View>
           
           {/* Annual Stay Tracker */}
           <View style={styles.detailSection}>
-            <Text style={styles.sectionTitle}>Annual stay tracker</Text>
+            <Text style={styles.sectionTitle}>{t('Annual stay tracker')}</Text>
             <View style={styles.stayTrackerSection}>
-              <Text style={styles.trackerTitle}>Day Used / Total Available</Text>
+              <Text style={styles.trackerTitle}>{t('Day Used / Total Available')}</Text>
               <Text style={styles.trackerValue}>
-                {isLoadingAllocation ? 'Loading...' : `${usedDays.used}/${usedDays.total}`}
+                {isLoadingAllocation ? t('Loading...') : `${usedDays.used}/${usedDays.total}`}
               </Text>
             </View>
           </View>
@@ -336,7 +338,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
               <MaterialIcons name="arrow-drop-down" size={20} color="#666" />
             </TouchableOpacity>
             
-            <Text style={styles.summaryTitle}>Annual Booking Summary</Text>
+            <Text style={styles.summaryTitle}>{t('Annual Booking Summary')}</Text>
             
             {userAllocation && (
               <>
@@ -349,7 +351,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
                         return d?.daysRemaining ?? userAllocation.daysRemaining ?? 0;
                       })()}
                     </Text>
-                    <Text style={styles.summaryLabel}>Days Remaining</Text>
+                    <Text style={styles.summaryLabel}>{t('Days Remaining')}</Text>
                   </View>
                   <View style={styles.summaryItem}>
                     <Text style={styles.summaryValue}>
@@ -358,11 +360,11 @@ const AssetDetailScreen = ({ route, navigation }) => {
                         return d?.daysBooked ?? userAllocation.daysBooked ?? 0;
                       })()}
                     </Text>
-                    <Text style={styles.summaryLabel}>Booked</Text>
+                    <Text style={styles.summaryLabel}>{t('Booked')}</Text>
                   </View>
                   <View style={styles.summaryItem}>
                     <Text style={styles.summaryValue}>{userAllocation.allowedDaysPerYear}</Text>
-                    <Text style={styles.summaryLabel}>Total</Text>
+                    <Text style={styles.summaryLabel}>{t('Total')}</Text>
                   </View>
                 </View>
 
@@ -398,14 +400,14 @@ const AssetDetailScreen = ({ route, navigation }) => {
                         return d?.daysBooked ?? userAllocation.daysBooked ?? 0;
                       })();
                       return Math.round((daysBooked / userAllocation.allowedDaysPerYear) * 100);
-                    })()}% of this window allocation used
+                    })()}% {t('of this window allocation used')}
                   </Text>
                 </View>
 
                 {/* Special Dates Summary */}
                 {userAllocation.specialDates && (
                   <View style={styles.specialDatesContainer}>
-                    <Text style={styles.specialDatesTitle}>Special Dates</Text>
+                    <Text style={styles.specialDatesTitle}>{t('Special Dates')}</Text>
                    
                     
                     <View style={styles.specialDatesRow}>
@@ -414,11 +416,11 @@ const AssetDetailScreen = ({ route, navigation }) => {
                         <View style={styles.specialDateHeader}>
                           <Text style={styles.specialDateType}></Text>
                           <View style={[styles.specialDateBadge, styles.type1Badge]}>
-                            <Text style={styles.specialDateBadgeText}>TYPE 1</Text>
+                            <Text style={styles.specialDateBadgeText}>{t('Type 1')}</Text>
                           </View>
                         </View>
                         <Text style={styles.specialDateUsage}>
-                          {userAllocation.specialDates.type1.used} / {userAllocation.specialDates.type1.total} used
+                          {userAllocation.specialDates.type1.used} / {userAllocation.specialDates.type1.total} {t('used')}
                         </Text>
                         <View style={styles.specialDateProgressContainer}>
                           <View style={styles.specialDateProgressBackground}>
@@ -442,11 +444,11 @@ const AssetDetailScreen = ({ route, navigation }) => {
                         <View style={styles.specialDateHeader}>
                           <Text style={styles.specialDateType}></Text>
                           <View style={[styles.specialDateBadge, styles.type2Badge]}>
-                            <Text style={styles.specialDateBadgeText}>TYPE 2</Text>
+                            <Text style={styles.specialDateBadgeText}>{t('Type 2')}</Text>
                           </View>
                         </View>
                         <Text style={styles.specialDateUsage}>
-                          {userAllocation.specialDates.type2.used} / {userAllocation.specialDates.type2.total} used
+                          {userAllocation.specialDates.type2.used} / {userAllocation.specialDates.type2.total} {t('used')}
                         </Text>
                         <View style={styles.specialDateProgressContainer}>
                           <View style={styles.specialDateProgressBackground}>
@@ -471,7 +473,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
 
                 {/* Active Bookings - FEAT-ACTIVE-001: Use universal counter */}
                 <View style={styles.activeBookingsContainer}>
-                  <Text style={styles.activeBookingsTitle}>Active Bookings</Text>
+                  <Text style={styles.activeBookingsTitle}>{t('Active Bookings')}</Text>
                   <Text style={styles.activeBookingsCount}>
                     {(() => {
                       // Use universal counter fields (activeBookingsUsed) if available
@@ -482,7 +484,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
                       const total = userAllocation.activeBookingsUsed !== undefined
                         ? used + (userAllocation.activeBookingsRemaining || 0)
                         : userAllocation.maxActiveBookings;
-                      return `${used} of ${total} slots used`;
+                      return t('{{used}} of {{total}} slots used', { used, total });
                     })()}
                   </Text>
                 </View>
@@ -497,7 +499,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
             onPress={() => navigation.navigate('CreateBooking', { asset })}
           >
             <MaterialIcons name="calendar-today" size={20} color="#fff" />
-            <Text style={styles.bookButtonText}>Book Now</Text>
+            <Text style={styles.bookButtonText}>{t('Book Now')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -512,7 +514,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Select Allocation Window</Text>
+              <Text style={styles.modalTitle}>{t('Select Allocation Window')}</Text>
               <TouchableOpacity 
                 style={styles.closeButton}
                 onPress={() => setShowYearPicker(false)}

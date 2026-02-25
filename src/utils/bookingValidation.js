@@ -1,5 +1,6 @@
 import { differenceInDays, isBefore, isAfter, addDays, isSameDay } from 'date-fns';
 import DateUtils from './dateUtils';
+import { getActiveLocale } from '../i18n';
 
 /**
  * Comprehensive booking validation utility
@@ -20,6 +21,13 @@ const BOOKING_TYPES = {
   REGULAR: 'Regular',
   SHORT_TERM: 'Short',
   VERY_SHORT_TERM: 'VeryShort'
+};
+
+const getIntlLocale = () => (getActiveLocale() === 'es' ? 'es-ES' : 'en-US');
+const formatLocaleDate = (dateValue) => {
+  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(getIntlLocale());
 };
 
 /**
@@ -161,7 +169,7 @@ export const validateGapRules = (startDate, endDate, existingBookings, bookingTy
         gapConflicts.push({
           type: 'before',
           requiredGap: existingBookingLength,
-          bookingDate: bookingStart.toLocaleDateString(),
+          bookingDate: formatLocaleDate(bookingStart),
           currentGap: daysBefore
         });
       }
@@ -179,7 +187,7 @@ export const validateGapRules = (startDate, endDate, existingBookings, bookingTy
         gapConflicts.push({
           type: 'after',
           requiredGap: existingBookingLength,
-          bookingDate: bookingEnd.toLocaleDateString(),
+          bookingDate: formatLocaleDate(bookingEnd),
           currentGap: daysAfter
         });
       }
@@ -283,7 +291,7 @@ export const validateOwnershipAllocation = (userId, userOwnership, bookingLength
     
     if (overlaps) {
       if (specialDate.type === 'maintenance') {
-        errors.push(`Maintenance: ${specialStart.toLocaleDateString()}`);
+        errors.push(`Maintenance: ${formatLocaleDate(specialStart)}`);
       } else if (specialDate.type === 'peak') {
         warnings.push(`Peak season dates selected. Special rules and rates may apply.`);
       } else if (specialDate.type === 'holiday') {

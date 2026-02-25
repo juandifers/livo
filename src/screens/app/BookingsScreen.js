@@ -15,12 +15,13 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { bookingApi } from '../../api';
-import { format } from 'date-fns';
 import { getCurrentApiConfig } from '../../config';
+import { useI18n } from '../../i18n';
 
 const { width } = Dimensions.get('window');
 
 const BookingsScreen = ({ navigation }) => {
+  const { t, formatDate } = useI18n();
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -146,7 +147,7 @@ const BookingsScreen = ({ navigation }) => {
           </View>
         }
       />
-      <Text style={styles.emptyStateText}>No Data Found</Text>
+      <Text style={styles.emptyStateText}>{t('No Data Found')}</Text>
     </View>
   );
 
@@ -179,29 +180,34 @@ const BookingsScreen = ({ navigation }) => {
         />
         <View style={styles.bookingContent}>
           <View style={styles.bookingHeader}>
-            <Text style={styles.assetName}>{item.asset?.name || 'Unknown Asset'}</Text>
-            <Text style={styles.assetLocation}>{item.asset?.location || 'Location not available'}</Text>
+            <Text style={styles.assetName}>{item.asset?.name || t('Unknown Asset')}</Text>
+            <Text style={styles.assetLocation}>{item.asset?.location || t('Location not available')}</Text>
             
             <View style={styles.dateContainer}>
               <Text style={styles.bookingDates}>
-                {format(new Date(item.startDate), 'dd MMM, yyyy')} - {format(new Date(item.endDate), 'dd MMM, yyyy')}
+                {formatDate(new Date(item.startDate), 'dd MMM, yyyy')} - {formatDate(new Date(item.endDate), 'dd MMM, yyyy')}
               </Text>
             </View>
             
             <View style={styles.bookingTypeContainer}>
-              <Text style={styles.bookingTypeLabel}>Booking Type</Text>
-              <Text style={styles.bookingType}>{item.bookingType || 'Short'}</Text>
+              <Text style={styles.bookingTypeLabel}>{t('Booking Type')}</Text>
+              <Text style={styles.bookingType}>{item.bookingType || t('Short')}</Text>
             </View>
 
             {activeTab === 'cancelled' && (
               <View style={styles.cancelledInfoContainer}>
                 {isShortTermCancelled ? (
                   <Text style={styles.cancelledInfoText}>
-                    {remainingPenaltyDays > 0 ? `${remainingPenaltyDays} day${remainingPenaltyDays === 1 ? '' : 's'} deducted` : 'No days deducted'}
+                    {remainingPenaltyDays > 0
+                      ? t('{{days}} day{{suffix}} deducted', {
+                          days: remainingPenaltyDays,
+                          suffix: remainingPenaltyDays === 1 ? '' : 's',
+                        })
+                      : t('No days deducted')}
                     {rebookedDays > 0 ? ` • ${rebookedDays} rebooked` : ''}
                   </Text>
                 ) : (
-                  <Text style={styles.cancelledInfoText}>No days deducted</Text>
+                  <Text style={styles.cancelledInfoText}>{t('No days deducted')}</Text>
                 )}
               </View>
             )}
@@ -209,7 +215,7 @@ const BookingsScreen = ({ navigation }) => {
           
           {activeTab === 'upcoming' && (
             <View style={styles.daysLeftContainer}>
-              <Text style={styles.daysLeftText}>{daysLeft} Days Left</Text>
+              <Text style={styles.daysLeftText}>{t('{{days}} Days Left', { days: daysLeft })}</Text>
             </View>
           )}
         </View>
@@ -223,7 +229,7 @@ const BookingsScreen = ({ navigation }) => {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>My Bookings</Text>
+          <Text style={styles.headerTitle}>{t('My Bookings')}</Text>
         </View>
         
         {/* Tab Navigation */}
@@ -238,7 +244,7 @@ const BookingsScreen = ({ navigation }) => {
                 activeTab === 'upcoming' && styles.activeTabText
               ]}
             >
-              UPCOMING
+              {t('UPCOMING')}
             </Text>
           </TouchableOpacity>
           
@@ -252,7 +258,7 @@ const BookingsScreen = ({ navigation }) => {
                 activeTab === 'past' && styles.activeTabText
               ]}
             >
-              PAST
+              {t('PAST')}
             </Text>
           </TouchableOpacity>
           
@@ -266,7 +272,7 @@ const BookingsScreen = ({ navigation }) => {
                 activeTab === 'cancelled' && styles.activeTabText
               ]}
             >
-              CANCELLED
+              {t('CANCELLED')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -305,7 +311,7 @@ const BookingsScreen = ({ navigation }) => {
             
             {/* Smart Scheduling Rules */}
             <TouchableOpacity style={styles.schedulingRulesContainer} onPress={() => navigation.navigate('SchedulingRules') }>
-              <Text style={styles.schedulingRulesText}>Smart Scheduling Rules</Text>
+              <Text style={styles.schedulingRulesText}>{t('Smart Scheduling Rules')}</Text>
               <MaterialIcons name="chevron-right" size={24} color="#000" />
             </TouchableOpacity>
           </>

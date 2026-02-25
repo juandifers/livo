@@ -4,6 +4,8 @@
  */
 
 import { format, isSameDay, isBefore, isAfter, differenceInDays, addDays, startOfDay } from 'date-fns';
+import { enUS, es as esDateFns } from 'date-fns/locale';
+import { getActiveLocale } from '../i18n';
 
 class DateUtils {
   /**
@@ -221,7 +223,8 @@ class DateUtils {
    */
   static formatDate(date, formatStr = 'MMM dd, yyyy') {
     const parsedDate = DateUtils.parseDate(date);
-    return format(parsedDate, formatStr);
+    const locale = getActiveLocale() === 'es' ? esDateFns : enUS;
+    return format(parsedDate, formatStr, { locale });
   }
 
   /**

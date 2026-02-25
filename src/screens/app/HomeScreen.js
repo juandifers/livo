@@ -17,12 +17,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { assetApi } from '../../api';
 import { getCurrentApiConfig } from '../../config';
+import { useI18n } from '../../i18n';
 
 // Get screen width
 const { width } = Dimensions.get('window');
 
 const HomeScreen = ({ navigation }) => {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [ownedAssets, setOwnedAssets] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -126,7 +128,7 @@ const HomeScreen = ({ navigation }) => {
         >
           {/* Your Assets Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>YOUR HOMES</Text>
+            <Text style={styles.sectionTitle}>{t('YOUR HOMES')}</Text>
 
             {ownedAssets.length > 0 ? (
               ownedAssets.map((asset) => (
@@ -152,7 +154,7 @@ const HomeScreen = ({ navigation }) => {
               ))
             ) : (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>You don't own any assets yet</Text>
+                <Text style={styles.emptyText}>{t('You do not own any assets yet')}</Text>
               </View>
             )}
           </View>

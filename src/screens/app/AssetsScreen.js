@@ -13,8 +13,10 @@ import { Card, Title, Paragraph, Searchbar, Chip } from 'react-native-paper';
 import { MaterialIcons } from '@expo/vector-icons';
 import { assetApi } from '../../api';
 import { getCurrentApiConfig } from '../../config';
+import { useI18n } from '../../i18n';
 
 const AssetsScreen = ({ navigation }) => {
+  const { t } = useI18n();
   console.log('🚀 AssetsScreen LOADED');
   
   const [assets, setAssets] = useState([]);
@@ -149,7 +151,9 @@ const AssetsScreen = ({ navigation }) => {
             <View style={styles.infoRow}>
               <MaterialIcons name="people" size={16} color="#666" />
               <Paragraph style={styles.infoText}>
-                Capacity: {item.capacity || 'Not specified'}
+                {t('Capacity: {{value}}', {
+                  value: item.capacity || t('Not specified'),
+                })}
               </Paragraph>
             </View>
             <View style={styles.typeContainer}>
@@ -159,7 +163,7 @@ const AssetsScreen = ({ navigation }) => {
                   item.type === 'boat' ? styles.boatChip : styles.homeChip
                 ]}
               >
-                {item.type === 'boat' ? 'Boat' : 'Home'}
+                {item.type === 'boat' ? t('Boat Type') : t('Home Type')}
               </Chip>
             </View>
           </View>
@@ -171,9 +175,9 @@ const AssetsScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Assets</Text>
+        <Text style={styles.headerTitle}>{t('Assets')}</Text>
         <Searchbar
-          placeholder="Search assets..."
+          placeholder={t('Search assets...')}
           onChangeText={handleSearch}
           value={searchQuery}
           style={styles.searchBar}
@@ -184,7 +188,7 @@ const AssetsScreen = ({ navigation }) => {
             onPress={() => filterAssets('all')}
           >
             <Text style={[styles.filterText, selectedFilter === 'all' && styles.selectedFilterText]}>
-              All
+              {t('All')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -192,7 +196,7 @@ const AssetsScreen = ({ navigation }) => {
             onPress={() => filterAssets('home')}
           >
             <Text style={[styles.filterText, selectedFilter === 'home' && styles.selectedFilterText]}>
-              Homes
+              {t('Homes')}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -200,7 +204,7 @@ const AssetsScreen = ({ navigation }) => {
             onPress={() => filterAssets('boat')}
           >
             <Text style={[styles.filterText, selectedFilter === 'boat' && styles.selectedFilterText]}>
-              Boats
+              {t('Boats')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -222,7 +226,7 @@ const AssetsScreen = ({ navigation }) => {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <MaterialIcons name="search-off" size={48} color="#999" />
-              <Text style={styles.emptyText}>No assets found</Text>
+              <Text style={styles.emptyText}>{t('No assets found')}</Text>
             </View>
           }
         />
