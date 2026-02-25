@@ -10,6 +10,7 @@ const connectDB = require('./config/db');
 
 // Import middleware
 const { apiLimiter } = require('./middleware/rateLimit');
+const perfLogger = require('./middleware/perfLogger');
 
 // Route files
 const authRoutes = require('./routes/authRoutes');
@@ -37,6 +38,9 @@ app.use(cors({
   origin: true,
   credentials: true
 }));
+
+// Performance logging for API requests
+app.use(perfLogger);
 
 // Apply rate limiting to all routes - DISABLED FOR TESTING
 // app.use(apiLimiter);

@@ -2,6 +2,34 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const config = require('../config/config');
 
+const LAST_LOGIN_UPDATE_WINDOW_MS =
+  parseInt(process.env.LAST_LOGIN_UPDATE_WINDOW_MS, 10) || 15 * 60 * 1000;
+
+const maybeUpdateLastLogin = (user) => {
+  const now = Date.now();
+  const previous = user?.lastLogin ? new Date(user.lastLogin).getTime() : 0;
+
+  // Avoid a write on every request. Update infrequently and do it async.
+  if (previous && now - previous < LAST_LOGIN_UPDATE_WINDOW_MS) {
+    return;
+  }
+
+  const threshold = new Date(now - LAST_LOGIN_UPDATE_WINDOW_MS);
+  User.updateOne(
+    {
+      _id: user._id,
+      $or: [
+        { lastLogin: { $exists: false } },
+        { lastLogin: null },
+        { lastLogin: { $lt: threshold } }
+      ]
+    },
+    { $set: { lastLogin: new Date(now) } }
+  ).catch((err) => {
+    console.warn(`Failed to update lastLogin for user ${user?._id}: ${err.message}`);
+  });
+};
+
 /**
  * Protect routes - Middleware to check if user is authenticated
  */
@@ -51,9 +79,7 @@ exports.protect = async (req, res, next) => {
       });
     }
 
-    // Update last login time
-    req.user.lastLogin = Date.now();
-    await req.user.save({ validateBeforeSave: false });
+    maybeUpdateLastLogin(req.user);
 
     next();
   } catch (err) {

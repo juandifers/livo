@@ -39,6 +39,35 @@ exports.validateCreateAsset = [
     .isString()
     .withMessage('Location must be a string')
     .trim(),
+
+  body('locationAddress')
+    .optional()
+    .isString()
+    .withMessage('Location address must be a string')
+    .trim(),
+
+  body('propertyManager')
+    .optional()
+    .isObject()
+    .withMessage('Property manager must be an object'),
+
+  body('propertyManager.name')
+    .optional()
+    .isString()
+    .withMessage('Property manager name must be a string')
+    .trim(),
+
+  body('propertyManager.phone')
+    .optional()
+    .isString()
+    .withMessage('Property manager phone must be a string')
+    .trim(),
+
+  body('propertyManager.email')
+    .optional({ nullable: true, checkFalsy: true })
+    .isEmail()
+    .withMessage('Property manager email must be a valid email')
+    .normalizeEmail(),
   
   body('capacity')
     .optional()
@@ -86,6 +115,35 @@ exports.validateUpdateAsset = [
     .isString()
     .withMessage('Location must be a string')
     .trim(),
+
+  body('locationAddress')
+    .optional()
+    .isString()
+    .withMessage('Location address must be a string')
+    .trim(),
+
+  body('propertyManager')
+    .optional()
+    .isObject()
+    .withMessage('Property manager must be an object'),
+
+  body('propertyManager.name')
+    .optional()
+    .isString()
+    .withMessage('Property manager name must be a string')
+    .trim(),
+
+  body('propertyManager.phone')
+    .optional()
+    .isString()
+    .withMessage('Property manager phone must be a string')
+    .trim(),
+
+  body('propertyManager.email')
+    .optional({ nullable: true, checkFalsy: true })
+    .isEmail()
+    .withMessage('Property manager email must be a valid email')
+    .normalizeEmail(),
   
   body('capacity')
     .optional()

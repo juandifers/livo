@@ -167,6 +167,16 @@ exports.validateGetBookings = [
   validateRequest
 ];
 
+// Validation rules for freed-date alerts feed
+exports.validateGetFreedDateAlerts = [
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('limit must be an integer between 1 and 100'),
+
+  validateRequest
+];
+
 // Validation rules for getting availability
 exports.validateGetAvailability = [
   param('assetId')

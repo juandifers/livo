@@ -13,53 +13,16 @@ const fs = require('fs');
 // @access  Public
 exports.getAssets = async (req, res) => {
   try {
-    // Get assets from database directly without validation
-    const assetsFromDb = await Asset.find().lean();
-    
-    // Populate user info separately to avoid validation errors
-    const assets = await Promise.all(
-      assetsFromDb.map(async (asset) => {
-        try {
-          // Only populate valid user references
-          if (asset.owners && Array.isArray(asset.owners)) {
-            const populatedOwners = await Promise.all(
-              asset.owners.map(async (owner) => {
-                if (!owner.user) return owner;
-                
-                try {
-                  const user = await User.findById(owner.user).select('name lastName email').lean();
-                  if (user) {
-                    return {
-                      ...owner,
-                      user
-                    };
-                  }
-                  return owner;
-                } catch (err) {
-                  return owner;
-                }
-              })
-            );
-            
-            return {
-              ...asset,
-              owners: populatedOwners
-            };
-          }
-          return asset;
-        } catch (err) {
-          console.error(`Error populating asset ${asset._id}:`, err);
-          return asset;
-        }
-      })
-    );
-    
-    // Handle null owners for each asset
-    let assetsModified = false;
-    let assetErrors = [];
-    
+    const dbStartedAt = Date.now();
+    const assets = await Asset.find()
+      .populate('owners.user', 'name lastName email')
+      .lean();
+    req.perf?.add('dbRead', Date.now() - dbStartedAt);
+
+    const assetErrors = [];
     const fixedAssets = [];
-    
+    const computeStartedAt = Date.now();
+
     for (const asset of assets) {
       try {
         // Skip assets that don't have an owners array
@@ -83,7 +46,6 @@ exports.getAssets = async (req, res) => {
         });
         
         if (validOwners.length !== asset.owners.length) {
-          assetsModified = true;
           console.log(`Filtered invalid owners from asset ${asset._id}`);
         }
         
@@ -113,6 +75,7 @@ exports.getAssets = async (req, res) => {
         });
       }
     }
+    req.perf?.add('compute', Date.now() - computeStartedAt);
     
     res.status(200).json({
       success: true,
@@ -169,12 +132,23 @@ exports.getAsset = async (req, res) => {
 // @access  Private
 exports.createAsset = async (req, res) => {
   try {
+    const propertyManager =
+      req.body.propertyManager && typeof req.body.propertyManager === 'object'
+        ? {
+            name: req.body.propertyManager.name,
+            phone: req.body.propertyManager.phone,
+            email: req.body.propertyManager.email
+          }
+        : undefined;
+
     // Create asset data from request body
     const assetData = {
       name: req.body.name,
       type: req.body.type,
       description: req.body.description,
       location: req.body.location,
+      locationAddress: req.body.locationAddress,
+      propertyManager,
       capacity: req.body.capacity,
       photos: req.body.photos || [],
       amenities: req.body.amenities || [],

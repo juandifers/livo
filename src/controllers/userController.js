@@ -229,6 +229,8 @@ exports.getUserOwnedAssets = async (req, res) => {
         name: asset.name,
         type: asset.type,
         location: asset.location,
+        locationAddress: asset.locationAddress,
+        propertyManager: asset.propertyManager,
         description: asset.description,
         capacity: asset.capacity,
         photos: asset.photos,

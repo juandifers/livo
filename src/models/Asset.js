@@ -83,6 +83,25 @@ const AssetSchema = new mongoose.Schema({
     required: [true, 'Location is required'],
     trim: true
   },
+  locationAddress: {
+    type: String,
+    trim: true
+  },
+  propertyManager: {
+    name: {
+      type: String,
+      trim: true
+    },
+    phone: {
+      type: String,
+      trim: true
+    },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true
+    }
+  },
   capacity: {
     type: Number,
     min: [1, 'Capacity must be at least 1']
