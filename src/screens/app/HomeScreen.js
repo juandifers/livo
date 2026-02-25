@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -28,9 +28,16 @@ const HomeScreen = ({ navigation }) => {
   const [ownedAssets, setOwnedAssets] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const skipNextFocusRefreshRef = useRef(true);
+  const loadInFlightRef = useRef(false);
 
   const loadData = async () => {
+    if (loadInFlightRef.current) {
+      return;
+    }
+
     try {
+      loadInFlightRef.current = true;
       setIsLoading(true);
       
       // Get user's owned assets
@@ -43,6 +50,7 @@ const HomeScreen = ({ navigation }) => {
     } finally {
       setIsLoading(false);
       setRefreshing(false);
+      loadInFlightRef.current = false;
     }
   };
 
@@ -53,6 +61,10 @@ const HomeScreen = ({ navigation }) => {
   // Refresh data whenever screen comes into focus
   useFocusEffect(
     useCallback(() => {
+      if (skipNextFocusRefreshRef.current) {
+        skipNextFocusRefreshRef.current = false;
+        return;
+      }
       loadData();
     }, [])
   );

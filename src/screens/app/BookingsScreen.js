@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -26,38 +26,46 @@ const BookingsScreen = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('upcoming');
+  const hasLoadedOnceRef = useRef(false);
 
-  const loadBookings = async () => {
+  const loadBookings = useCallback(async ({ silent = false } = {}) => {
     try {
-      setIsLoading(true);
+      if (!silent) {
+        setIsLoading(true);
+      }
+
       const result = await bookingApi.getUserBookings();
       if (result.success) {
         setBookings(result.data);
+      } else {
+        setBookings([]);
       }
     } catch (error) {
       console.error('Error loading bookings:', error);
+      setBookings([]);
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
       setRefreshing(false);
     }
-  };
-
-  useEffect(() => {
-    loadBookings();
   }, []);
 
   // Refresh data whenever screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      if (!isLoading) {
-        loadBookings();
+      if (!hasLoadedOnceRef.current) {
+        hasLoadedOnceRef.current = true;
+        loadBookings({ silent: false });
+        return;
       }
-    }, [])
+      loadBookings({ silent: true });
+    }, [loadBookings])
   );
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadBookings();
+    loadBookings({ silent: true });
   };
 
   // Filter and sort bookings based on active tab
@@ -131,8 +139,8 @@ const BookingsScreen = ({ navigation }) => {
   };
 
   // Add a navigation handler for booking details
-  const navigateToBookingDetail = (bookingId, booking) => {
-    navigation.navigate('BookingDetail', { bookingId, booking });
+  const navigateToBookingDetail = (bookingId) => {
+    navigation.navigate('BookingDetail', { bookingId });
   };
 
   const renderEmptyState = () => (
@@ -171,7 +179,7 @@ const BookingsScreen = ({ navigation }) => {
     return (
       <TouchableOpacity 
         style={styles.bookingCard}
-        onPress={() => navigateToBookingDetail(item._id, item)}
+        onPress={() => navigateToBookingDetail(item._id)}
       >
         <Image 
           source={{ uri: getAssetImage(item.asset) }}

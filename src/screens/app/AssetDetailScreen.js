@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -11,9 +11,11 @@ import {
   StatusBar,
   Dimensions,
   FlatList,
-  Modal
+  Modal,
+  Linking
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { assetApi, bookingApi, authApi } from '../../api';
 import { useI18n } from '../../i18n';
 
@@ -32,6 +34,8 @@ const AssetDetailScreen = ({ route, navigation }) => {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [selectedWindowKey, setSelectedWindowKey] = useState('current'); // 'current' | 'next'
   const [showYearPicker, setShowYearPicker] = useState(false);
+  const hasInitialLoadCompletedRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
 
   const loadCurrentUser = async () => {
     try {
@@ -92,15 +96,57 @@ const AssetDetailScreen = ({ route, navigation }) => {
 
   useEffect(() => {
     const loadData = async () => {
-      const user = await loadCurrentUser();
-      await loadAssetDetails();
-      await loadAssetBookings();
-      if (user) {
-        await loadUserAllocation(user);
+      if (refreshInFlightRef.current) {
+        return;
+      }
+
+      refreshInFlightRef.current = true;
+      hasInitialLoadCompletedRef.current = false;
+      try {
+        const user = await loadCurrentUser();
+        await loadAssetDetails();
+        await loadAssetBookings();
+        if (user) {
+          await loadUserAllocation(user);
+        }
+      } finally {
+        refreshInFlightRef.current = false;
+        hasInitialLoadCompletedRef.current = true;
       }
     };
     loadData();
   }, [assetId]);
+
+  // Refresh counters whenever this screen regains focus.
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      if (!hasInitialLoadCompletedRef.current || refreshInFlightRef.current) {
+        return () => {
+          isActive = false;
+        };
+      }
+
+      (async () => {
+        refreshInFlightRef.current = true;
+        try {
+          const user = currentUser || await loadCurrentUser();
+          if (!isActive) return;
+          await loadAssetBookings();
+          if (user && isActive) {
+            await loadUserAllocation(user);
+          }
+        } finally {
+          refreshInFlightRef.current = false;
+        }
+      })();
+
+      return () => {
+        isActive = false;
+      };
+    }, [assetId, currentUser])
+  );
 
   // Get asset image - prioritize uploaded photos, fallback to default
   const getAssetImage = () => {
@@ -223,6 +269,7 @@ const AssetDetailScreen = ({ route, navigation }) => {
 
   const usedDays = getUsedDays();
   const specialDates = getSpecialDatesUsage();
+  const assetAddress = asset?.locationAddress || asset?.location || '';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -297,12 +344,19 @@ const AssetDetailScreen = ({ route, navigation }) => {
           <View style={styles.detailSection}>
             <View style={styles.locationHeader}>
               <Text style={styles.sectionTitle}>{t('Location Address')}</Text>
-              <TouchableOpacity style={styles.mapButton}>
+              <TouchableOpacity
+                style={styles.mapButton}
+                onPress={() => {
+                  if (!assetAddress) return;
+                  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(assetAddress)}`;
+                  Linking.openURL(mapsUrl).catch(() => {});
+                }}
+              >
                 <Text style={styles.mapButtonText}>{t('SHOW ON MAP')}</Text>
                 <MaterialIcons name="chevron-right" size={24} color="#000" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.sectionValue}>{asset.location || t('Unknown Location')}</Text>
+            <Text style={styles.sectionValue}>{assetAddress || t('Unknown Location')}</Text>
           </View>
           
           {/* Annual Stay Tracker */}

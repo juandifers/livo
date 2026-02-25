@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -8,43 +8,106 @@ import {
   ActivityIndicator, 
   Alert,
   Image,
+  Linking,
   SafeAreaView,
   StatusBar,
   Platform
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { bookingApi } from '../../api';
-import { showCalendarSelection, formatBookingDuration } from '../../utils/calendarUtils';
+import { assetApi, bookingApi } from '../../api';
+import { showCalendarSelection } from '../../utils/calendarUtils';
+import { getCurrentApiConfig } from '../../config';
 import { useI18n } from '../../i18n';
 
 const BookingDetailScreen = ({ route, navigation }) => {
   const { bookingId, booking: initialBooking } = route.params;
+  const resolvedBookingId = bookingId || initialBooking?._id;
   const { t, formatDate, mapApiError } = useI18n();
   const [booking, setBooking] = useState(initialBooking || null);
-  const [isLoading, setIsLoading] = useState(!initialBooking);
+  const [isLoading, setIsLoading] = useState(!initialBooking && Boolean(resolvedBookingId));
   const [isCancelling, setIsCancelling] = useState(false);
+  const hydratedAssetIdsRef = useRef(new Set());
 
-  const loadBookingDetails = async () => {
-    if (!initialBooking) {
+  useEffect(() => {
+    let isActive = true;
+
+    const loadBookingDetails = async () => {
+      if (!resolvedBookingId) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        setIsLoading(true);
-        // Fetch booking details - this endpoint is not implemented in the API yet
-        // This is a placeholder for when the API is updated
-        const result = await bookingApi.getBookingById(bookingId);
-        if (result.success) {
+        if (!initialBooking) {
+          setIsLoading(true);
+        }
+        const result = await bookingApi.getBookingById(resolvedBookingId);
+        if (isActive && result.success && result.data) {
           setBooking(result.data);
         }
       } catch (error) {
         console.error('Error loading booking details:', error);
       } finally {
-        setIsLoading(false);
+        if (isActive) {
+          setIsLoading(false);
+        }
       }
-    }
-  };
+    };
+
+    loadBookingDetails();
+
+    return () => {
+      isActive = false;
+    };
+  }, [resolvedBookingId, initialBooking]);
 
   useEffect(() => {
-    loadBookingDetails();
-  }, [bookingId]);
+    let isActive = true;
+
+    const hydrateAssetDetails = async () => {
+      if (!booking) return;
+
+      const rawAsset = booking.asset;
+      const assetId = typeof rawAsset === 'string' ? rawAsset : rawAsset?._id;
+      if (!assetId) return;
+      if (hydratedAssetIdsRef.current.has(String(assetId))) return;
+
+      const currentPropertyManager =
+        (typeof rawAsset === 'object' && rawAsset?.propertyManager) || booking.propertyManager || {};
+      const hasPropertyManager = Boolean(
+        currentPropertyManager?.name || currentPropertyManager?.phone || currentPropertyManager?.email
+      );
+      const hasPhotos = Array.isArray(rawAsset?.photos) && rawAsset.photos.length > 0;
+      const hasLocationAddress = Boolean(rawAsset?.locationAddress || booking.locationAddress);
+
+      // Fetch full asset only when booking payload is partial.
+      if (hasPropertyManager && hasPhotos && hasLocationAddress) {
+        return;
+      }
+
+      hydratedAssetIdsRef.current.add(String(assetId));
+      const assetResult = await assetApi.getAssetById(assetId);
+      if (!isActive || !assetResult?.success || !assetResult?.data) return;
+
+      setBooking((prev) => {
+        if (!prev) return prev;
+        const prevAsset = typeof prev.asset === 'object' && prev.asset ? prev.asset : { _id: assetId };
+        return {
+          ...prev,
+          asset: {
+            ...prevAsset,
+            ...assetResult.data
+          }
+        };
+      });
+    };
+
+    hydrateAssetDetails();
+
+    return () => {
+      isActive = false;
+    };
+  }, [booking]);
 
   const handleCancelBooking = () => {
     // Check if this is a short-term booking (within 60 days)
@@ -72,7 +135,7 @@ const BookingDetailScreen = ({ route, navigation }) => {
           onPress: async () => {
             try {
               setIsCancelling(true);
-              const result = await bookingApi.cancelBooking(bookingId);
+              const result = await bookingApi.cancelBooking(resolvedBookingId);
               setIsCancelling(false);
               
               if (result.success) {
@@ -129,9 +192,9 @@ const BookingDetailScreen = ({ route, navigation }) => {
 
     // Mock asset data - in a real app, this would come from the booking or API
     const asset = {
-      name: booking.assetName || 'Aquarii',
-      location: booking.location || 'Cartagena, Colombia',
-      type: booking.assetType || 'boat'
+      name: booking?.asset?.name || booking.assetName || 'Aquarii',
+      location: booking?.asset?.locationAddress || booking?.asset?.location || booking.location || 'Cartagena, Colombia',
+      type: booking?.asset?.type || booking.assetType || 'boat'
     };
 
     try {
@@ -144,6 +207,27 @@ const BookingDetailScreen = ({ route, navigation }) => {
 
   // Get asset image based on type
   const getAssetImage = () => {
+    const asset = booking?.asset || {};
+    const firstPhoto = Array.isArray(asset.photos) && asset.photos.length > 0
+      ? asset.photos[0]
+      : null;
+
+    if (firstPhoto) {
+      if (typeof firstPhoto === 'string') {
+        if (firstPhoto.startsWith('http://') || firstPhoto.startsWith('https://')) {
+          return firstPhoto;
+        }
+
+        const apiConfig = getCurrentApiConfig();
+        const baseUrl = apiConfig.baseURL.replace('/api', '');
+        return `${baseUrl}${firstPhoto.startsWith('/') ? '' : '/'}${firstPhoto}`;
+      }
+
+      if (typeof firstPhoto === 'object' && typeof firstPhoto.url === 'string') {
+        return firstPhoto.url;
+      }
+    }
+
     if (booking?.asset?.type === 'boat') {
       return 'https://images.unsplash.com/photo-1564834744159-ff0ea41ba4b9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80';
     } else {
@@ -200,6 +284,13 @@ const BookingDetailScreen = ({ route, navigation }) => {
   };
 
   const bookingStatus = getBookingStatus(booking);
+  const bookingAsset = booking?.asset || {};
+  const bookingAddress = bookingAsset.locationAddress || booking.locationAddress || bookingAsset.location || booking.location || '';
+  const propertyManager = bookingAsset.propertyManager || booking.propertyManager || {};
+  const managerName = typeof propertyManager.name === 'string' ? propertyManager.name.trim() : '';
+  const managerPhone = typeof propertyManager.phone === 'string' ? propertyManager.phone.trim() : '';
+  const managerEmail = typeof propertyManager.email === 'string' ? propertyManager.email.trim() : '';
+  const hasManagerInfo = Boolean(managerName || managerPhone || managerEmail);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -224,7 +315,7 @@ const BookingDetailScreen = ({ route, navigation }) => {
           {/* Asset Name and Status */}
           <View style={styles.assetNameContainer}>
             <Text style={styles.assetName}>
-              {booking.asset.name}
+              {bookingAsset.name || booking.assetName || t('Asset')}
             </Text>
             <View style={[styles.statusBadge, { backgroundColor: bookingStatus.color }]}>
               <Text style={styles.statusText}>{bookingStatus.text}</Text>
@@ -286,23 +377,22 @@ const BookingDetailScreen = ({ route, navigation }) => {
           <View style={styles.locationRow}>
             <View>
               <Text style={styles.locationLabel}>{t('Location Address')}</Text>
-              <Text style={styles.locationValue}>{booking.asset.location || 'Cartagena'}</Text>
+              <Text style={styles.locationValue}>{bookingAddress || t('Unknown Location')}</Text>
             </View>
             <TouchableOpacity 
               style={styles.mapButton}
               onPress={() => {
                 try {
-                  const address = booking?.asset?.location || '';
+                  const address = bookingAddress;
                   if (!address) return;
                   const url = Platform.select({
                     ios: `http://maps.apple.com/?q=${encodeURIComponent(address)}`,
                     android: `geo:0,0?q=${encodeURIComponent(address)}`
                   });
                   if (url) {
-                    const { Linking } = require('react-native');
                     Linking.openURL(url);
                   }
-                } catch (e) {}
+                } catch (_e) {}
               }}
             >
               <Text style={styles.mapButtonText}>{t('SHOW ON MAP')}</Text>
@@ -311,59 +401,28 @@ const BookingDetailScreen = ({ route, navigation }) => {
           </View>
           
           {/* Property Manager */}
-          <View style={styles.managerSection}>
-            <Text style={styles.managerTitle}>{t('Property Manager details')}</Text>
-            <View style={styles.managerContainer}>
-              <Image
-                source={{ uri: 'https://randomuser.me/api/portraits/men/32.jpg' }}
-                style={styles.managerImage}
-              />
+          {hasManagerInfo && (
+            <View style={styles.managerSection}>
+              <Text style={styles.managerTitle}>{t('Property Manager details')}</Text>
               <View style={styles.managerInfo}>
-                <Text style={styles.managerName}>Andrea Molina</Text>
-                <View style={styles.managerContact}>
-                  <MaterialIcons name="phone" size={16} color="#000" />
-                  <Text style={styles.managerContactText}>+573204836784</Text>
-                </View>
-                <View style={styles.managerContact}>
-                  <MaterialIcons name="email" size={16} color="#000" />
-                  <Text style={styles.managerContactText}>andrea@livo.co</Text>
-                </View>
+                {managerName ? (
+                  <Text style={styles.managerName}>{managerName}</Text>
+                ) : null}
+                {managerPhone ? (
+                  <View style={styles.managerContact}>
+                    <MaterialIcons name="phone" size={16} color="#000" />
+                    <Text style={styles.managerContactText}>{managerPhone}</Text>
+                  </View>
+                ) : null}
+                {managerEmail ? (
+                  <View style={styles.managerContact}>
+                    <MaterialIcons name="email" size={16} color="#000" />
+                    <Text style={styles.managerContactText}>{managerEmail}</Text>
+                  </View>
+                ) : null}
               </View>
             </View>
-          </View>
-          
-          {/* Booking Confirmation Code */}
-          <View style={styles.codeSection}>
-            <Text style={styles.codeTitle}>{t('Booking Confirmation Code')}</Text>
-            <View style={styles.codeContainer}>
-              <Text style={styles.codeValue}>#1000764</Text>
-              <TouchableOpacity style={styles.copyButton}>
-                <MaterialIcons name="content-copy" size={24} color="#000" />
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* Door Entry Code */}
-          <View style={styles.codeSection}>
-            <Text style={styles.codeTitle}>{t('Door Entry Code')}</Text>
-            <View style={styles.codeContainer}>
-              <Text style={styles.codeValue}>{t('Available 48 hrs prior to arrival')}</Text>
-              <TouchableOpacity style={styles.copyButton}>
-                <MaterialIcons name="content-copy" size={24} color="#000" />
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* WiFi Password */}
-          <View style={styles.codeSection}>
-            <Text style={styles.codeTitle}>{t('Wifi Password')}</Text>
-            <View style={styles.codeContainer}>
-              <Text style={styles.codeValue}>{t('Available 48 hrs prior to arrival')}</Text>
-              <TouchableOpacity style={styles.copyButton}>
-                <MaterialIcons name="content-copy" size={24} color="#000" />
-              </TouchableOpacity>
-            </View>
-          </View>
+          )}
           
           {/* Action Buttons - hide when booking is cancelled */}
           {booking.status !== 'cancelled' && (
@@ -561,16 +620,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 15
   },
-  managerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  managerImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    marginRight: 15
-  },
   managerInfo: {
     flex: 1
   },
@@ -587,32 +636,6 @@ const styles = StyleSheet.create({
   managerContactText: {
     fontSize: 14,
     marginLeft: 10
-  },
-  codeSection: {
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderColor: '#eee'
-  },
-  codeTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10
-  },
-  codeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 10,
-    paddingVertical: 15,
-    paddingHorizontal: 20
-  },
-  codeValue: {
-    fontSize: 16
-  },
-  copyButton: {
-    padding: 5
   },
   actionButtonsContainer: {
     flexDirection: 'row',

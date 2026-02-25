@@ -5,14 +5,14 @@
  * Update these values based on your environment.
  */
 
-// Backend API base URL
-// You can override this at build/runtime using Expo env vars:
-// - EXPO_PUBLIC_API_URL="https://your-backend.vercel.app/api"
-// - EXPO_PUBLIC_API_BASE_URL="https://your-backend.vercel.app/api"
-export const API_BASE_URL =
+const PRODUCTION_API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   process.env.EXPO_PUBLIC_API_BASE_URL ||
   'https://livo-backend-api.vercel.app/api';
+
+const DEVELOPMENT_API_BASE_URL =
+  process.env.EXPO_PUBLIC_LOCAL_API_URL ||
+  'http://10.22.39.64:3000/api';
 
 // Development mode flag - set to false to use real backend API instead of mock data
 export const DEV_MODE = false;
@@ -21,7 +21,7 @@ export const DEV_MODE = false;
 export const API_CONFIG = {
   // For local development with physical device
   development: {
-    baseURL: 'http://10.22.39.64:3000/api',
+    baseURL: DEVELOPMENT_API_BASE_URL,
     timeout: 10000
   },
   
@@ -33,17 +33,25 @@ export const API_CONFIG = {
   
   // For production environment
   production: {
-    baseURL:
-      process.env.EXPO_PUBLIC_API_URL ||
-      process.env.EXPO_PUBLIC_API_BASE_URL ||
-      'https://livo-backend-api.vercel.app/api',
+    baseURL: PRODUCTION_API_BASE_URL,
     timeout: 15000
   }
 };
 
 // Current environment - can be 'development', 'staging', or 'production'
-// Use 'development' for local backend, 'production' for deployed backend
-export const ENVIRONMENT = 'production';
+// Defaults to production unless explicitly overridden.
+const environmentOverride = process.env.EXPO_PUBLIC_ENVIRONMENT;
+const defaultEnvironment = 'production';
+const requestedEnvironment = environmentOverride || defaultEnvironment;
+const validEnvironments = ['development', 'staging', 'production'];
+export const ENVIRONMENT = validEnvironments.includes(requestedEnvironment)
+  ? requestedEnvironment
+  : defaultEnvironment;
+
+// Backend API base URL for current environment
+export const API_BASE_URL =
+  API_CONFIG[ENVIRONMENT]?.baseURL ||
+  PRODUCTION_API_BASE_URL;
 
 // Get the current API configuration based on environment
 export const getCurrentApiConfig = () => {
