@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { clientFetchJson } from '@/lib/api.client';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { mapCommonApiError } from '@/lib/i18n/errorMap';
+import TwoStepConfirmModal from '@/components/admin/TwoStepConfirmModal';
 
 type AvailabilityDay = {
   available: boolean;
@@ -73,6 +74,12 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
   const [isCreatingBlock, setIsCreatingBlock] = useState(false);
   const [blockError, setBlockError] = useState<string | null>(null);
   const [overlapWarning, setOverlapWarning] = useState<any>(null);
+  const [showCreateBookingConfirmModal, setShowCreateBookingConfirmModal] = useState(false);
+  const [showCreateBlockConfirmModal, setShowCreateBlockConfirmModal] = useState(false);
+  const [showForceCreateBlockConfirmModal, setShowForceCreateBlockConfirmModal] = useState(false);
+  const [blockToDelete, setBlockToDelete] = useState<BlockedDate | null>(null);
+  const [isDeletingBlock, setIsDeletingBlock] = useState(false);
+  const [deleteBlockError, setDeleteBlockError] = useState<string | null>(null);
   const weekdays = useMemo(
     () => (locale === 'es' ? ['Dom', 'Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']),
     [locale]
@@ -425,6 +432,129 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
     }
   };
 
+  const selectedOwnerLabel =
+    owners.find((o) => o.userId === createUserId)?.label || userLabels[createUserId] || createUserId || t('—');
+  const selectedBlockTypeLabel =
+    blockType === 'maintenance' ? t('Maintenance') : blockType === 'rental' ? t('Rental') : t('Other');
+
+  function clearBlockRangeForm() {
+    setBlockStart(null);
+    setBlockEnd(null);
+    setBlockReason('');
+    setBlockError(null);
+    setOverlapWarning(null);
+  }
+
+  async function refreshCalendarData() {
+    const startStr = formatDateString(firstDay);
+    const endStr = formatDateString(lastDay);
+    const availabilityRes = await clientFetchJson<AvailabilityResp>(
+      `/bookings/availability/${assetId}?startDate=${startStr}&endDate=${endStr}`
+    );
+    setCalendar(availabilityRes.data.calendar || {});
+    setSpecialType1(availabilityRes.data.specialDates?.type1 || []);
+    setSpecialType2(availabilityRes.data.specialDates?.type2 || []);
+  }
+
+  async function refreshBlockedDatesData() {
+    if (viewUserId) return;
+    const blocksRes = await clientFetchJson<{ success: boolean; data: BlockedDate[] }>(`/bookings/blocked-dates/${assetId}`);
+    setBlockedDates(blocksRes?.data || []);
+  }
+
+  async function createBookingFromSelection() {
+    if (!createUserId || !createStart || !createEnd) return;
+    setIsCreating(true);
+    setCreateError(null);
+    try {
+      // Admin override: send with adminOverride flag if there are validation errors
+      const hasErrors = createValidation.errors.length > 0;
+      await clientFetchJson('/bookings', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: createUserId,
+          assetId,
+          startDate: createStart,
+          endDate: createEnd,
+          adminOverride: hasErrors,
+          overrideNote: hasErrors ? `Admin override: ${createValidation.errors.join('; ')}` : undefined,
+        }),
+      });
+      handleClearSelection();
+      await refreshCalendarData();
+      window.dispatchEvent(new CustomEvent('livo:booking-updated', { detail: { assetId, userId: createUserId } }));
+      router.refresh();
+    } catch (e: any) {
+      setCreateError(mapCommonApiError(locale, e?.message || '', 'Failed to create booking'));
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  async function createBlockDateRange(force: boolean) {
+    if (!blockStart || !blockEnd) return;
+    setIsCreatingBlock(true);
+    setBlockError(null);
+    if (!force) setOverlapWarning(null);
+    try {
+      await clientFetchJson('/bookings/blocked-dates', {
+        method: 'POST',
+        body: JSON.stringify({
+          assetId,
+          startDate: blockStart,
+          endDate: blockEnd,
+          blockType,
+          reason: blockReason,
+          force,
+        }),
+      });
+      await refreshCalendarData();
+      await refreshBlockedDatesData();
+      clearBlockRangeForm();
+      router.refresh();
+    } catch (e: any) {
+      if (!force && e?.requiresConfirmation) {
+        setOverlapWarning(e);
+      } else {
+        setBlockError(e?.error || e?.message || t('Failed to create block'));
+      }
+    } finally {
+      setIsCreatingBlock(false);
+    }
+  }
+
+  async function onConfirmCreateBooking() {
+    setShowCreateBookingConfirmModal(false);
+    await createBookingFromSelection();
+  }
+
+  async function onConfirmCreateBlock() {
+    setShowCreateBlockConfirmModal(false);
+    await createBlockDateRange(false);
+  }
+
+  async function onConfirmForceCreateBlock() {
+    setShowForceCreateBlockConfirmModal(false);
+    await createBlockDateRange(true);
+  }
+
+  async function onConfirmDeleteBlock() {
+    if (!blockToDelete) return;
+    setIsDeletingBlock(true);
+    setDeleteBlockError(null);
+    try {
+      await clientFetchJson(`/bookings/blocked-dates/${blockToDelete._id}`, { method: 'DELETE' });
+      await refreshCalendarData();
+      await refreshBlockedDatesData();
+      setBlockToDelete(null);
+      router.refresh();
+    } catch (e: any) {
+      setDeleteBlockError(e?.error || e?.message || t('Failed to delete block'));
+    } finally {
+      setIsDeletingBlock(false);
+    }
+  }
+
   return (
     <div className="mb-8 rounded-xl border bg-white shadow-sm p-4">
       <div className="flex items-center gap-3 mb-4">
@@ -733,10 +863,9 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
           <button
             onClick={() => {
               setShowBlockUI(false);
-              setBlockStart(null);
-              setBlockEnd(null);
-              setBlockError(null);
-              setOverlapWarning(null);
+              clearBlockRangeForm();
+              setShowCreateBlockConfirmModal(false);
+              setShowForceCreateBlockConfirmModal(false);
             }}
             className={`px-4 py-2 rounded-lg ${!showBlockUI ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 border'}`}
           >
@@ -750,6 +879,7 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
               setSelectedDate(null);
               setSelectedDetails(null);
               setCreateError(null);
+              setShowCreateBookingConfirmModal(false);
             }}
             className={`px-4 py-2 rounded-lg ${showBlockUI ? 'bg-red-600 text-white' : 'bg-white text-slate-700 border'}`}
           >
@@ -814,55 +944,15 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
             <button
               className="bg-red-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-red-700 disabled:opacity-60"
               disabled={!blockStart || !blockEnd || isCreatingBlock}
-              onClick={async () => {
+              onClick={() => {
                 if (!blockStart || !blockEnd) return;
-                setIsCreatingBlock(true);
-                setBlockError(null);
-                setOverlapWarning(null);
-                try {
-                  await clientFetchJson('/bookings/blocked-dates', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                      assetId,
-                      startDate: blockStart,
-                      endDate: blockEnd,
-                      blockType,
-                      reason: blockReason,
-                      force: false
-                    }),
-                  });
-                  // Refresh data
-                  const startStr = formatDateString(firstDay);
-                  const endStr = formatDateString(lastDay);
-                  const res = await clientFetchJson<AvailabilityResp>(`/bookings/availability/${assetId}?startDate=${startStr}&endDate=${endStr}`);
-                  setCalendar(res.data.calendar || {});
-                  const blocksRes = await clientFetchJson<{ success: boolean; data: BlockedDate[] }>(`/bookings/blocked-dates/${assetId}`);
-                  setBlockedDates(blocksRes?.data || []);
-                  setBlockStart(null);
-                  setBlockEnd(null);
-                  setBlockReason('');
-                  router.refresh();
-                } catch (e: any) {
-                  if (e?.requiresConfirmation) {
-                    setOverlapWarning(e);
-                  } else {
-                    setBlockError(e?.error || e?.message || t('Failed to create block'));
-                  }
-                } finally {
-                  setIsCreatingBlock(false);
-                }
+                setShowCreateBlockConfirmModal(true);
               }}
             >
               {isCreatingBlock ? t('Creating...') : t('Create Block')}
             </button>
             <button
-              onClick={() => {
-                setBlockStart(null);
-                setBlockEnd(null);
-                setBlockReason('');
-                setBlockError(null);
-                setOverlapWarning(null);
-              }}
+              onClick={clearBlockRangeForm}
               className="px-4 py-2 border rounded-lg bg-white shadow-sm text-slate-700 hover:bg-slate-50"
             >
               {t('Clear')}
@@ -891,37 +981,9 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
               </div>
               <button
                 className="bg-amber-600 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-amber-700 text-sm"
-                onClick={async () => {
+                onClick={() => {
                   if (!blockStart || !blockEnd) return;
-                  setIsCreatingBlock(true);
-                  try {
-                    await clientFetchJson('/bookings/blocked-dates', {
-                      method: 'POST',
-                      body: JSON.stringify({
-                        assetId,
-                        startDate: blockStart,
-                        endDate: blockEnd,
-                        blockType,
-                        reason: blockReason,
-                        force: true
-                      }),
-                    });
-                    const startStr = formatDateString(firstDay);
-                    const endStr = formatDateString(lastDay);
-                    const res = await clientFetchJson<AvailabilityResp>(`/bookings/availability/${assetId}?startDate=${startStr}&endDate=${endStr}`);
-                    setCalendar(res.data.calendar || {});
-                    const blocksRes = await clientFetchJson<{ success: boolean; data: BlockedDate[] }>(`/bookings/blocked-dates/${assetId}`);
-                    setBlockedDates(blocksRes?.data || []);
-                    setBlockStart(null);
-                    setBlockEnd(null);
-                    setBlockReason('');
-                    setOverlapWarning(null);
-                    router.refresh();
-                  } catch (e: any) {
-                    setBlockError(e?.error || e?.message || t('Failed to create block'));
-                  } finally {
-                    setIsCreatingBlock(false);
-                  }
+                  setShowForceCreateBlockConfirmModal(true);
                 }}
               >
                 {t('Force Create Block Anyway')}
@@ -984,40 +1046,9 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
             <button
               className="bg-sky-700 text-white px-4 py-2 rounded-lg shadow-sm hover:bg-sky-800 disabled:opacity-60"
               disabled={!createUserId || !createStart || !createEnd || isCreating}
-              onClick={async () => {
+              onClick={() => {
                 if (!createUserId || !createStart || !createEnd) return;
-                setIsCreating(true);
-                setCreateError(null);
-                try {
-                  // Admin override: send with adminOverride flag if there are validation errors
-                  const hasErrors = createValidation.errors.length > 0;
-                  await clientFetchJson('/bookings', {
-                    method: 'POST',
-                    body: JSON.stringify({ 
-                      userId: createUserId, 
-                      assetId, 
-                      startDate: createStart, 
-                      endDate: createEnd,
-                      adminOverride: hasErrors,
-                      overrideNote: hasErrors ? `Admin override: ${createValidation.errors.join('; ')}` : undefined
-                    }),
-                  });
-                  // Clear selection and refresh
-                  handleClearSelection();
-                  // Refresh current month data
-                  const startStr = formatDateString(firstDay);
-                  const endStr = formatDateString(lastDay);
-                  const res = await clientFetchJson<AvailabilityResp>(`/bookings/availability/${assetId}?startDate=${startStr}&endDate=${endStr}`);
-                  setCalendar(res.data.calendar || {});
-                  setSpecialType1(res.data.specialDates?.type1 || []);
-                  setSpecialType2(res.data.specialDates?.type2 || []);
-                  // Refresh server-rendered bookings table below
-                  router.refresh();
-                } catch (e: any) {
-                  setCreateError(mapCommonApiError(locale, e?.message || '', 'Failed to create booking'));
-                } finally {
-                  setIsCreating(false);
-                }
+                setShowCreateBookingConfirmModal(true);
               }}
             >
               {isCreating ? t('Creating...') : (createValidation.errors.length > 0 ? t('Create Anyway (Override)') : t('Create Booking'))}
@@ -1082,20 +1113,9 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
                     <td className="p-2">{block.reason || '—'}</td>
                     <td className="p-2">
                       <button
-                        onClick={async () => {
-                          if (!confirm(t('Delete this block?'))) return;
-                          try {
-                            await clientFetchJson(`/bookings/blocked-dates/${block._id}`, { method: 'DELETE' });
-                            const startStr = formatDateString(firstDay);
-                            const endStr = formatDateString(lastDay);
-                            const res = await clientFetchJson<AvailabilityResp>(`/bookings/availability/${assetId}?startDate=${startStr}&endDate=${endStr}`);
-                            setCalendar(res.data.calendar || {});
-                            const blocksRes = await clientFetchJson<{ success: boolean; data: BlockedDate[] }>(`/bookings/blocked-dates/${assetId}`);
-                            setBlockedDates(blocksRes?.data || []);
-                            router.refresh();
-                          } catch (e: any) {
-                            alert(e?.error || e?.message || t('Failed to delete block'));
-                          }
+                        onClick={() => {
+                          setDeleteBlockError(null);
+                          setBlockToDelete(block);
                         }}
                         className="text-red-600 hover:text-red-800 text-xs underline"
                       >
@@ -1107,8 +1127,110 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
               </tbody>
             </table>
           </div>
+          {deleteBlockError && <div className="text-sm text-red-600 mt-2">{deleteBlockError}</div>}
         </div>
       )}
+
+      <TwoStepConfirmModal
+        open={showCreateBookingConfirmModal}
+        title={t('Create this booking?')}
+        description={t('This booking will be created with the selected owner and date range.')}
+        details={[
+          { label: t('Owner'), value: selectedOwnerLabel },
+          { label: t('Start Date'), value: createStart || t('—') },
+          { label: t('End Date'), value: createEnd || t('—') },
+          {
+            label: t('Mode'),
+            value: createValidation.errors.length > 0 ? t('Admin override') : t('Standard'),
+          },
+        ]}
+        keywordPrompt={t('Please review this action, then confirm booking creation.')}
+        cancelLabel={t('Cancel')}
+        continueLabel={t('Continue')}
+        backLabel={t('Back')}
+        confirmLabel={t('Confirm booking')}
+        pendingLabel={t('Creating...')}
+        pending={isCreating}
+        onCancel={() => {
+          if (!isCreating) setShowCreateBookingConfirmModal(false);
+        }}
+        onConfirm={onConfirmCreateBooking}
+      />
+
+      <TwoStepConfirmModal
+        open={showCreateBlockConfirmModal}
+        title={t('Block these dates?')}
+        description={t('Blocked dates will prevent new bookings across this range.')}
+        details={[
+          { label: t('Start Date'), value: blockStart || t('—') },
+          { label: t('End Date'), value: blockEnd || t('—') },
+          { label: t('Block Type'), value: selectedBlockTypeLabel },
+          { label: t('Reason'), value: blockReason || t('No reason provided') },
+        ]}
+        keywordPrompt={t('Please review this action, then confirm date blocking.')}
+        cancelLabel={t('Cancel')}
+        continueLabel={t('Continue')}
+        backLabel={t('Back')}
+        confirmLabel={t('Confirm block')}
+        pendingLabel={t('Creating...')}
+        pending={isCreatingBlock}
+        danger
+        onCancel={() => {
+          if (!isCreatingBlock) setShowCreateBlockConfirmModal(false);
+        }}
+        onConfirm={onConfirmCreateBlock}
+      />
+
+      <TwoStepConfirmModal
+        open={showForceCreateBlockConfirmModal}
+        title={t('Force block overlapping bookings?')}
+        description={t('This will block dates even when existing bookings overlap.')}
+        details={[
+          { label: t('Start Date'), value: blockStart || t('—') },
+          { label: t('End Date'), value: blockEnd || t('—') },
+          { label: t('Block Type'), value: selectedBlockTypeLabel },
+        ]}
+        keywordPrompt={t('Please review this action, then confirm the force block.')}
+        cancelLabel={t('Cancel')}
+        continueLabel={t('Continue')}
+        backLabel={t('Back')}
+        confirmLabel={t('Force block')}
+        pendingLabel={t('Creating...')}
+        pending={isCreatingBlock}
+        danger
+        onCancel={() => {
+          if (!isCreatingBlock) setShowForceCreateBlockConfirmModal(false);
+        }}
+        onConfirm={onConfirmForceCreateBlock}
+      />
+
+      <TwoStepConfirmModal
+        open={!!blockToDelete}
+        title={t('Delete this block?')}
+        description={t('This block will be removed and these dates can be booked again.')}
+        details={
+          blockToDelete
+            ? [
+                { label: t('Start Date'), value: blockToDelete.startDate },
+                { label: t('End Date'), value: blockToDelete.endDate },
+                { label: t('Block Type'), value: blockToDelete.blockType },
+                { label: t('Reason'), value: blockToDelete.reason || t('No reason provided') },
+              ]
+            : []
+        }
+        keywordPrompt={t('Please review this action, then confirm block deletion.')}
+        cancelLabel={t('Keep block')}
+        continueLabel={t('Continue')}
+        backLabel={t('Back')}
+        confirmLabel={t('Delete block')}
+        pendingLabel={t('Deleting...')}
+        pending={isDeletingBlock}
+        danger
+        onCancel={() => {
+          if (!isDeletingBlock) setBlockToDelete(null);
+        }}
+        onConfirm={onConfirmDeleteBlock}
+      />
 
       {/* Booking Details - Show when clicked on booked day */}
       {selectedDate && selectedDetails && !createStart && !showBlockUI && (

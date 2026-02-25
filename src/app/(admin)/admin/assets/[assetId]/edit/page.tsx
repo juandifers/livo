@@ -12,6 +12,12 @@ type Asset = {
   type: 'boat' | 'home';
   description?: string;
   location: string;
+  locationAddress?: string;
+  propertyManager?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+  };
   capacity?: number;
   photos?: string[];
   amenities?: string[];

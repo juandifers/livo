@@ -11,6 +11,12 @@ type Asset = {
   type: 'boat' | 'home';
   description?: string;
   location: string;
+  locationAddress?: string;
+  propertyManager?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+  };
   capacity?: number;
   amenities?: string[];
 };
@@ -21,6 +27,10 @@ export default function AssetEditForm({ asset }: { asset: Asset }) {
   const [name, setName] = useState(asset.name || '');
   const [description, setDescription] = useState(asset.description || '');
   const [location, setLocation] = useState(asset.location || '');
+  const [locationAddress, setLocationAddress] = useState(asset.locationAddress || '');
+  const [propertyManagerName, setPropertyManagerName] = useState(asset.propertyManager?.name || '');
+  const [propertyManagerPhone, setPropertyManagerPhone] = useState(asset.propertyManager?.phone || '');
+  const [propertyManagerEmail, setPropertyManagerEmail] = useState(asset.propertyManager?.email || '');
   const [capacity, setCapacity] = useState(String(asset.capacity || ''));
   const [amenities, setAmenities] = useState(
     Array.isArray(asset.amenities) ? asset.amenities.join(', ') : ''
@@ -43,12 +53,20 @@ export default function AssetEditForm({ asset }: { asset: Asset }) {
         .map(a => a.trim())
         .filter(a => a.length > 0);
 
+      const normalizedPropertyManager = {
+        name: propertyManagerName.trim(),
+        phone: propertyManagerPhone.trim(),
+        email: propertyManagerEmail.trim(),
+      };
+
       await clientFetchJson(`/assets/${asset._id}`, {
         method: 'PUT',
         body: JSON.stringify({
           name,
           description: description || undefined,
           location,
+          locationAddress: locationAddress || '',
+          propertyManager: normalizedPropertyManager,
           capacity: capacity ? parseInt(capacity) : undefined,
           amenities: amenitiesArray.length > 0 ? amenitiesArray : undefined
         })
@@ -88,6 +106,17 @@ export default function AssetEditForm({ asset }: { asset: Asset }) {
       </div>
 
       <div>
+        <label className="block text-sm font-medium mb-1 text-slate-700">{t('Location Address')}</label>
+        <textarea
+          value={locationAddress}
+          onChange={(e) => setLocationAddress(e.target.value)}
+          className="w-full border rounded-lg px-3 py-2 bg-white shadow-sm"
+          rows={2}
+          placeholder={t('e.g., 123 Ocean Drive, Marbella, Spain')}
+        />
+      </div>
+
+      <div>
         <label className="block text-sm font-medium mb-1 text-slate-700">{t('Description')}</label>
         <textarea
           value={description}
@@ -119,6 +148,44 @@ export default function AssetEditForm({ asset }: { asset: Asset }) {
           className="w-full border rounded-lg px-3 py-2 bg-white shadow-sm"
           placeholder={t('e.g., Pool, WiFi, Parking')}
         />
+      </div>
+
+      <div className="pt-2 border-t border-slate-200">
+        <h3 className="text-sm font-semibold text-slate-800 mb-3">{t('Property Manager details')}</h3>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium mb-1 text-slate-700">{t('Property Manager Name')}</label>
+            <input
+              type="text"
+              value={propertyManagerName}
+              onChange={(e) => setPropertyManagerName(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 bg-white shadow-sm"
+              placeholder={t('e.g., Andrea Molina')}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1 text-slate-700">{t('Property Manager Phone')}</label>
+            <input
+              type="text"
+              value={propertyManagerPhone}
+              onChange={(e) => setPropertyManagerPhone(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 bg-white shadow-sm"
+              placeholder={t('e.g., +57 320 483 6784')}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1 text-slate-700">{t('Property Manager Email')}</label>
+            <input
+              type="email"
+              value={propertyManagerEmail}
+              onChange={(e) => setPropertyManagerEmail(e.target.value)}
+              className="w-full border rounded-lg px-3 py-2 bg-white shadow-sm"
+              placeholder={t('e.g., manager@example.com')}
+            />
+          </div>
+        </div>
       </div>
       
       {error && (

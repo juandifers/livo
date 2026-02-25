@@ -1,13 +1,16 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { clientFetchJson } from '@/lib/api.client';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { mapCommonApiError } from '@/lib/i18n/errorMap';
+import TwoStepConfirmModal from '@/components/admin/TwoStepConfirmModal';
 
 type Asset = { _id: string; name: string };
 
 export default function CreateBookingForm({ userId }: { userId: string }) {
   const { t, locale } = useI18n();
+  const router = useRouter();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [assetId, setAssetId] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -17,6 +20,7 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [showCreateConfirmModal, setShowCreateConfirmModal] = useState(false);
   
   // FEAT-ADMIN-OVR-001: Admin override modal state
   const [violations, setViolations] = useState<string[]>([]);
@@ -41,10 +45,12 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
   }, [userId, locale]);
 
   const canSubmit = useMemo(() => !!assetId && !!startDate && !!endDate, [assetId, startDate, endDate]);
+  const selectedAssetName = useMemo(
+    () => assets.find((asset) => asset._id === assetId)?.name || t('Unknown asset'),
+    [assets, assetId, t]
+  );
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!canSubmit) return;
+  async function createBooking() {
     setBusy(true);
     setError(null);
     setMessage(null);
@@ -55,7 +61,8 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
       });
       setMessage(t('Booking created'));
       resetForm();
-      window.location.reload();
+      window.dispatchEvent(new CustomEvent('livo:booking-updated', { detail: { userId, assetId } }));
+      router.refresh();
     } catch (e: any) {
       // FEAT-ADMIN-OVR-001: Check if this requires admin override
       if (e?.requiresOverride && Array.isArray(e?.violations)) {
@@ -67,6 +74,19 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canSubmit || busy) return;
+    setError(null);
+    setMessage(null);
+    setShowCreateConfirmModal(true);
+  }
+  
+  async function onCreateConfirmed() {
+    setShowCreateConfirmModal(false);
+    await createBooking();
   }
   
   async function handleOverride() {
@@ -89,7 +109,8 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
       setMessage(t('Booking created with admin override'));
       setShowOverrideModal(false);
       resetForm();
-      window.location.reload();
+      window.dispatchEvent(new CustomEvent('livo:booking-updated', { detail: { userId, assetId } }));
+      router.refresh();
     } catch (e: any) {
       setError(mapCommonApiError(locale, e?.message || '', 'Failed to create booking'));
       setShowOverrideModal(false);
@@ -104,6 +125,7 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
     setEndDate('');
     setNotes('');
     setUseExtraDays(false);
+    setShowCreateConfirmModal(false);
     setViolations([]);
     setOverrideNote('');
   }
@@ -153,6 +175,29 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
       {assets.length === 0 && (
         <div className="text-sm text-gray-500">{t('This user has no owned assets.')}</div>
       )}
+
+      <TwoStepConfirmModal
+        open={showCreateConfirmModal}
+        title={t('Create this booking?')}
+        description={t('Please verify the booking details before continuing.')}
+        details={[
+          { label: t('Asset'), value: selectedAssetName },
+          { label: t('Start'), value: startDate || t('—') },
+          { label: t('End'), value: endDate || t('—') },
+          { label: t('Use extra days'), value: useExtraDays ? t('Yes') : t('No') },
+        ]}
+        keywordPrompt={t('Please review this action, then confirm booking creation.')}
+        cancelLabel={t('Cancel')}
+        continueLabel={t('Continue')}
+        backLabel={t('Back')}
+        confirmLabel={t('Confirm booking')}
+        pendingLabel={t('Creating...')}
+        pending={busy}
+        onCancel={() => {
+          if (!busy) setShowCreateConfirmModal(false);
+        }}
+        onConfirm={onCreateConfirmed}
+      />
       
       {/* FEAT-ADMIN-OVR-001: Admin override confirmation modal */}
       {showOverrideModal && (
@@ -211,4 +256,3 @@ export default function CreateBookingForm({ userId }: { userId: string }) {
     </form>
   );
 }
-

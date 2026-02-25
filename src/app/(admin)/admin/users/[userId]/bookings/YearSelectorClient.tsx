@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { clientFetchJson } from '@/lib/api.client';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 
@@ -61,7 +61,33 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
   const { t } = useI18n();
   const [selectedKey, setSelectedKey] = useState<'current' | 'next'>('current');
   const [allocationData, setAllocationData] = useState<AllocationData | undefined>(allocation);
-  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    setAllocationData(allocation);
+  }, [allocation]);
+
+  const refreshAllocation = useCallback(async () => {
+    try {
+      const res = await clientFetchJson<{ success: boolean; data: AllocationData }>(
+        `/bookings/allocation/${encodeURIComponent(userId)}/${encodeURIComponent(assetId)}`
+      );
+      setAllocationData(res?.data);
+    } catch {
+      // Keep current values if refresh fails.
+    }
+  }, [userId, assetId]);
+
+  useEffect(() => {
+    const onBookingUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ assetId?: string; userId?: string }>).detail || {};
+      if (detail.assetId && detail.assetId !== assetId) return;
+      if (detail.userId && detail.userId !== userId) return;
+      void refreshAllocation();
+    };
+
+    window.addEventListener('livo:booking-updated', onBookingUpdated);
+    return () => window.removeEventListener('livo:booking-updated', onBookingUpdated);
+  }, [assetId, userId, refreshAllocation]);
 
   const windowOptions = useMemo(() => {
     const opts: { key: 'current' | 'next'; label: string; data: any }[] = [];
@@ -113,6 +139,11 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
     let bookedDays = 0;
     
     yearData.bookings.forEach((b: any) => {
+      // Extra-day bookings do not consume the standard allocation bucket.
+      if (b.isExtraDays) {
+        return;
+      }
+
       // Skip cancelled bookings (unless penalty)
       if (b.status === 'cancelled' && !b.shortTermCancelled) {
         return;
