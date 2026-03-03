@@ -4,6 +4,20 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  async redirects() {
+    return [
+      {
+        source: '/account-setup.html',
+        destination: '/account-setup',
+        permanent: false,
+      },
+      {
+        source: '/reset-password.html',
+        destination: '/reset-password',
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
     // Allow clients to use a relative NEXT_PUBLIC_API_BASE_URL like "/api" while still
     // proxying to the real backend (local in dev, Vercel in prod).

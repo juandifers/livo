@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState, Suspense } from 'react';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { clientFetchJson } from '@/lib/api.client';
 import { useI18n } from '@/lib/i18n/I18nProvider';
@@ -141,9 +140,6 @@ function AccountSetupContent() {
         {message && <p className="text-green-700 text-sm mt-3">{message}</p>}
         {error && <p className="text-red-600 text-sm mt-3">{error}</p>}
 
-        <Link href="/login" className="block mt-4 text-sm text-slate-600 hover:text-slate-900">
-          {t('Back to login')}
-        </Link>
       </form>
     </div>
   );
