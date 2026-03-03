@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authApi } from '../api';
+import { getToken, removeToken } from '../utils/tokenStorage';
 
 // Create the context
 const AuthContext = createContext();
@@ -19,7 +20,7 @@ export const AuthProvider = ({ children }) => {
         setIsLoading(true);
         
         // Get token from storage
-        const storedToken = await AsyncStorage.getItem('token');
+        const storedToken = await getToken();
         
         if (storedToken) {
           // Set token
@@ -36,7 +37,7 @@ export const AuthProvider = ({ children }) => {
               setUser(result.data);
             } else {
               // If failed to get user, clear token
-              await AsyncStorage.removeItem('token');
+              await removeToken();
               setToken(null);
             }
           }
@@ -65,7 +66,7 @@ export const AuthProvider = ({ children }) => {
       } else {
         return { success: false, error: result.error };
       }
-    } catch (error) {
+    } catch (_error) {
       return { success: false, error: 'An unexpected error occurred' };
     } finally {
       setIsSigningIn(false);
@@ -82,6 +83,22 @@ export const AuthProvider = ({ children }) => {
       console.error('Error during logout:', error);
     }
   };
+
+  const deleteAccount = async (currentPassword, confirmationText) => {
+    try {
+      const result = await authApi.deleteMyAccount(currentPassword, confirmationText);
+      if (!result.success) {
+        return result;
+      }
+
+      setToken(null);
+      setUser(null);
+      return { success: true };
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      return { success: false, error: 'Failed to delete account' };
+    }
+  };
   
   const value = {
     user,
@@ -90,6 +107,7 @@ export const AuthProvider = ({ children }) => {
     isSigningIn,
     login,
     logout,
+    deleteAccount,
     isAuthenticated: !!token,
   };
   

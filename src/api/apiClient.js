@@ -1,6 +1,7 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEV_MODE, getCurrentApiConfig } from '../config';
+import { getToken, removeToken } from '../utils/tokenStorage';
 
 // Get API configuration based on environment
 const apiConfig = getCurrentApiConfig();
@@ -17,7 +18,7 @@ const apiClient = axios.create({
 // Add request interceptor to add auth token to requests
 apiClient.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem('token');
+    const token = await getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -40,7 +41,7 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       // Handle token expiration - could implement token refresh here
       // For now, just logout
-      await AsyncStorage.removeItem('token');
+      await removeToken();
       await AsyncStorage.removeItem('user');
       // Navigate to login screen would happen via auth context
     }

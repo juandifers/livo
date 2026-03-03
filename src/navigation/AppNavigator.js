@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAuth } from '../context/AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useI18n } from '../i18n';
+import { SHOW_API_TEST_TOOLS } from '../config';
 
 // Import screen components (we'll create these next)
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -18,6 +19,8 @@ import BookingsScreen from '../screens/app/BookingsScreen';
 import SchedulingRulesScreen from '../screens/app/SchedulingRulesScreen';
 import BookingDetailScreen from '../screens/app/BookingDetailScreen';
 import CancellationPoliciesScreen from '../screens/app/CancellationPoliciesScreen';
+import TermsAndConditionsScreen from '../screens/app/TermsAndConditionsScreen';
+import PrivacyPolicyScreen from '../screens/app/PrivacyPolicyScreen';
 import CreateBookingScreen from '../screens/app/CreateBookingScreen';
 import ProfileScreen from '../screens/app/ProfileScreen';
 import AlertsScreen from '../screens/app/AlertsScreen';
@@ -212,9 +215,13 @@ const AppNavigator = () => {
       <MainStack.Screen name="Assets" component={AssetsStackNavigator} />
       <MainStack.Screen name="BookingDetail" component={BookingDetailScreen} />
       <MainStack.Screen name="CancellationPolicies" component={CancellationPoliciesScreen} />
+      <MainStack.Screen name="TermsAndConditions" component={TermsAndConditionsScreen} />
+      <MainStack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
       <MainStack.Screen name="UserProfile" component={UserProfileScreen} />
       <MainStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
-      <MainStack.Screen name="ApiTest" component={ApiTestScreen} />
+      {SHOW_API_TEST_TOOLS && (
+        <MainStack.Screen name="ApiTest" component={ApiTestScreen} />
+      )}
     </MainStack.Navigator>
   );
 

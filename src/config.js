@@ -5,6 +5,11 @@
  * Update these values based on your environment.
  */
 
+const parseBooleanEnv = (value, defaultValue = false) => {
+  if (value === undefined) return defaultValue;
+  return String(value).toLowerCase() === 'true';
+};
+
 const PRODUCTION_API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   process.env.EXPO_PUBLIC_API_BASE_URL ||
@@ -12,10 +17,12 @@ const PRODUCTION_API_BASE_URL =
 
 const DEVELOPMENT_API_BASE_URL =
   process.env.EXPO_PUBLIC_LOCAL_API_URL ||
-  'http://10.22.39.64:3000/api';
+  'http://localhost:3000/api';
 
 // Development mode flag - set to false to use real backend API instead of mock data
 export const DEV_MODE = false;
+export const SHOW_API_TEST_TOOLS =
+  DEV_MODE || parseBooleanEnv(process.env.EXPO_PUBLIC_ENABLE_API_TEST_TOOLS, false);
 
 // Backend API URLs
 export const API_CONFIG = {

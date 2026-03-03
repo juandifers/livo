@@ -8,8 +8,7 @@ import {
   Platform,
   ScrollView,
   Alert,
-  TextInput,
-  Image
+  TextInput
 } from 'react-native';
 import { Formik } from 'formik';
 import * as Yup from 'yup';
@@ -171,21 +170,6 @@ const LoginScreen = ({ navigation }) => {
                   {isSigningIn ? t('Signing in...') : t('Sign in')}
                 </Text>
               </TouchableOpacity>
-
-              {!DEV_MODE && (
-                <View style={styles.devModeContainer}>
-                  <Text style={styles.devModeText}>{t('REAL DATA MODE')}</Text>
-                  <Text style={styles.devModeCredentials}>
-                    {t('Connected to MongoDB with demo data')}
-                  </Text>
-                  <Text style={styles.devModeNote}>
-                    {t('Using: {{email}} / {{password}}', {
-                      email: TEST_CREDENTIALS.email,
-                      password: TEST_CREDENTIALS.password,
-                    })}
-                  </Text>
-                </View>
-              )}
             </View>
           )}
         </Formik>
@@ -314,28 +298,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 5,
     marginLeft: 5,
-  },
-  devModeContainer: {
-    marginTop: 20,
-    padding: 10,
-    backgroundColor: '#F8F8F8',
-    borderRadius: 5,
-    alignItems: 'center',
-  },
-  devModeText: {
-    fontWeight: 'bold',
-    color: '#F57F17',
-    marginBottom: 5,
-  },
-  devModeCredentials: {
-    fontSize: 12,
-    color: '#F57F17',
-    textAlign: 'center',
-  },
-  devModeNote: {
-    fontSize: 12,
-    color: '#777',
-    textAlign: 'center',
   },
 });
 

@@ -1,6 +1,7 @@
 import apiClient, { DEV_MODE } from './apiClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { testUser } from '../utils/testData';
+import { getToken, removeToken, setToken } from '../utils/tokenStorage';
 
 // Auth API endpoints
 const login = async (email, password) => {
@@ -13,7 +14,7 @@ const login = async (email, password) => {
         const token = 'fake-jwt-token-for-development';
         
         // Store token and user data
-        await AsyncStorage.setItem('token', token);
+        await setToken(token);
         await AsyncStorage.setItem('user', JSON.stringify(testUser));
         
         return { success: true, data: { token, user: testUser } };
@@ -31,7 +32,7 @@ const login = async (email, password) => {
     const { token } = response.data;
     
     // Store the token first
-    await AsyncStorage.setItem('token', token);
+    await setToken(token);
     
     // Now get the user data with the token
     try {
@@ -60,20 +61,47 @@ const logout = async () => {
   try {
     // In development mode, just clear storage
     if (DEV_MODE) {
-      await AsyncStorage.removeItem('token');
+      await removeToken();
       await AsyncStorage.removeItem('user');
       return { success: true };
     }
     
     // In production mode, call the API
     await apiClient.get('/auth/logout');
-    await AsyncStorage.removeItem('token');
+    await removeToken();
     await AsyncStorage.removeItem('user');
     return { success: true };
   } catch (error) {
     return { 
       success: false, 
       error: error.response?.data?.message || 'Logout failed' 
+    };
+  }
+};
+
+const deleteMyAccount = async (currentPassword, confirmationText) => {
+  try {
+    // In development mode, simulate success and clear auth data
+    if (DEV_MODE) {
+      await removeToken();
+      await AsyncStorage.removeItem('user');
+      return { success: true };
+    }
+
+    await apiClient.delete('/auth/me', {
+      data: {
+        currentPassword,
+        confirmationText
+      }
+    });
+
+    await removeToken();
+    await AsyncStorage.removeItem('user');
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || error.response?.data?.message || 'Failed to delete account'
     };
   }
 };
@@ -162,7 +190,7 @@ const getCurrentUser = async () => {
   try {
     // In development mode, return test user if token exists
     if (DEV_MODE) {
-      const token = await AsyncStorage.getItem('token');
+      const token = await getToken();
       if (token) {
         return { success: true, data: testUser };
       } else {
@@ -184,6 +212,7 @@ const getCurrentUser = async () => {
 export default {
   login,
   logout,
+  deleteMyAccount,
   completeAccountSetup,
   forgotPassword,
   resetPassword,
