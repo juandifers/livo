@@ -200,4 +200,21 @@ exports.validateDeleteUser = [
     .withMessage('Invalid user ID format'),
   
   validateRequest
-]; 
+];
+
+// Validation rules for self account deletion
+exports.validateDeleteMyAccount = [
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('Current password is required'),
+  body('confirmationText')
+    .notEmpty()
+    .withMessage('Confirmation text is required')
+    .custom((value) => {
+      if (String(value).trim().toUpperCase() !== 'DELETE') {
+        throw new Error('Confirmation text must be DELETE');
+      }
+      return true;
+    }),
+  validateRequest
+];

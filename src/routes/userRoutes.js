@@ -5,7 +5,8 @@ const {
   updateUser, 
   deleteUser,
   getCurrentUser,
-  getUserOwnedAssets
+  getUserOwnedAssets,
+  deleteMyAccount
 } = require('../controllers/userController');
 const { createUser } = require('../controllers/authController');
 
@@ -13,7 +14,8 @@ const {
   validateUpdateUser,
   validateGetUser,
   validateDeleteUser,
-  validateCreateUser
+  validateCreateUser,
+  validateDeleteMyAccount
 } = require('../middleware/validation/userValidation');
 
 const { protect, authorize } = require('../middleware/auth');
@@ -26,6 +28,7 @@ router.use(protect);
 // Current user routes
 router.get('/me', getCurrentUser);
 router.get('/me/assets', getUserOwnedAssets);
+router.delete('/me', validateDeleteMyAccount, deleteMyAccount);
 
 // Routes limited to admin only
 router

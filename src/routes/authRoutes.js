@@ -13,6 +13,7 @@ const {
   getMe,
   logout
 } = require('../controllers/authController');
+const { deleteMyAccount } = require('../controllers/userController');
 
 const {
   validateLogin,
@@ -21,7 +22,8 @@ const {
   validateForgotPassword,
   validateResetPassword,
   validateChangePassword,
-  validateUserIdParam
+  validateUserIdParam,
+  validateDeleteMyAccount
 } = require('../middleware/validation/userValidation');
 
 const { protect, authorize } = require('../middleware/auth');
@@ -39,6 +41,7 @@ router.put('/reset-password/:token', validateResetPassword, resetPassword);
 
 // Protected routes
 router.get('/me', protect, getMe);
+router.delete('/me', protect, validateDeleteMyAccount, deleteMyAccount);
 router.get('/logout', protect, logout);
 router.put('/change-password', protect, validateChangePassword, changePassword);
 

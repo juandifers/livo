@@ -2,6 +2,7 @@ const express = require('express');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
+const mongoose = require('mongoose');
 const path = require('path');
 
 // Load config
@@ -22,6 +23,25 @@ const adminRoutes = require('./routes/adminRoutes');
 // Initialize app
 const app = express();
 
+// Basic hardening
+app.disable('x-powered-by');
+app.set('trust proxy', config.trustProxy);
+
+// Security headers for API responses
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-DNS-Prefetch-Control', 'off');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+  if (config.env === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+
+  next();
+});
+
 // Body parser
 app.use(express.json());
 
@@ -33,17 +53,44 @@ if (config.env === 'development') {
   app.use(morgan('dev'));
 }
 
-// Enable CORS - reflect request origin to support credentials
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  if (config.env !== 'production' && config.cors.allowAllInDevelopment) {
+    return true;
+  }
+
+  return config.cors.allowedOrigins.includes(origin);
+};
+
+// Enable CORS using explicit allowlist in production
 app.use(cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (isOriginAllowed(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('CORS_NOT_ALLOWED'));
+  },
   credentials: true
 }));
 
 // Performance logging for API requests
 app.use(perfLogger);
 
-// Apply rate limiting to all routes - DISABLED FOR TESTING
-// app.use(apiLimiter);
+// Apply rate limiting to all routes
+app.use(apiLimiter);
+
+// Basic health endpoint for uptime checks
+app.get('/api/healthz', (req, res) => {
+  const isDatabaseConnected = mongoose.connection.readyState === 1;
+  const httpStatus = isDatabaseConnected ? 200 : 503;
+
+  res.status(httpStatus).json({
+    success: isDatabaseConnected,
+    status: isDatabaseConnected ? 'ok' : 'degraded',
+    database: isDatabaseConnected ? 'connected' : 'disconnected',
+    timestamp: new Date().toISOString()
+  });
+});
 
 // Mount routes
 app.use('/api/auth', authRoutes);
@@ -62,9 +109,16 @@ app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 connectDB();
 
 // Error handler middleware
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
+  if (err?.message === 'CORS_NOT_ALLOWED') {
+    return res.status(403).json({
+      success: false,
+      error: 'Origin not allowed by CORS policy'
+    });
+  }
+
   console.error(err.stack);
-  res.status(500).json({
+  return res.status(500).json({
     success: false,
     error: 'Server Error'
   });
