@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { clientFetchJson } from '@/lib/api.client';
+import { useI18n } from '@/lib/i18n/I18nProvider';
 
 type AllocationData = {
   currentWindow?: { start: string; end: string };
@@ -57,9 +58,36 @@ interface YearSelectorClientProps {
 }
 
 export default function YearSelectorClient({ userId, assetId, allocation }: YearSelectorClientProps) {
+  const { t } = useI18n();
   const [selectedKey, setSelectedKey] = useState<'current' | 'next'>('current');
   const [allocationData, setAllocationData] = useState<AllocationData | undefined>(allocation);
-  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    setAllocationData(allocation);
+  }, [allocation]);
+
+  const refreshAllocation = useCallback(async () => {
+    try {
+      const res = await clientFetchJson<{ success: boolean; data: AllocationData }>(
+        `/bookings/allocation/${encodeURIComponent(userId)}/${encodeURIComponent(assetId)}`
+      );
+      setAllocationData(res?.data);
+    } catch {
+      // Keep current values if refresh fails.
+    }
+  }, [userId, assetId]);
+
+  useEffect(() => {
+    const onBookingUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ assetId?: string; userId?: string }>).detail || {};
+      if (detail.assetId && detail.assetId !== assetId) return;
+      if (detail.userId && detail.userId !== userId) return;
+      void refreshAllocation();
+    };
+
+    window.addEventListener('livo:booking-updated', onBookingUpdated);
+    return () => window.removeEventListener('livo:booking-updated', onBookingUpdated);
+  }, [assetId, userId, refreshAllocation]);
 
   const windowOptions = useMemo(() => {
     const opts: { key: 'current' | 'next'; label: string; data: any }[] = [];
@@ -69,24 +97,24 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
       const label =
         (allocationData?.currentWindow?.start && allocationData?.currentWindow?.end)
           ? `${allocationData.currentWindow.start} → ${allocationData.currentWindow.end}`
-          : (cur.windowStart && cur.windowEnd ? `${cur.windowStart} → ${cur.windowEnd}` : 'Loading…');
+          : (cur.windowStart && cur.windowEnd ? `${cur.windowStart} → ${cur.windowEnd}` : t('Loading...'));
       opts.push({ key: 'current', label, data: cur });
     }
     if (nxt) {
       const label =
         (allocationData?.nextWindow?.start && allocationData?.nextWindow?.end)
           ? `${allocationData.nextWindow.start} → ${allocationData.nextWindow.end}`
-          : (nxt.windowStart && nxt.windowEnd ? `${nxt.windowStart} → ${nxt.windowEnd}` : 'Loading…');
+          : (nxt.windowStart && nxt.windowEnd ? `${nxt.windowStart} → ${nxt.windowEnd}` : t('Loading...'));
       opts.push({ key: 'next', label, data: nxt });
     }
-    // If allocation hasn't arrived yet, still render two options (both as Loading…)
+    // If allocation hasn't arrived yet, still render two options (both as Loading...)
     return opts.length > 0
       ? opts
       : [
-          { key: 'current' as const, label: 'Loading…', data: null },
-          { key: 'next' as const, label: 'Loading…', data: null },
+          { key: 'current' as const, label: t('Loading...'), data: null },
+          { key: 'next' as const, label: t('Loading...'), data: null },
         ];
-  }, [allocationData]);
+  }, [allocationData, t]);
 
   useEffect(() => {
     // Auto-select first available window if selection is not available
@@ -111,6 +139,11 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
     let bookedDays = 0;
     
     yearData.bookings.forEach((b: any) => {
+      // Extra-day bookings do not consume the standard allocation bucket.
+      if (b.isExtraDays) {
+        return;
+      }
+
       // Skip cancelled bookings (unless penalty)
       if (b.status === 'cancelled' && !b.shortTermCancelled) {
         return;
@@ -208,11 +241,11 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
 
         {/* No Data Message */}
         <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg">
-          <div className="text-lg font-medium mb-2">No allocation data available</div>
-          <div className="text-sm">for selected window</div>
+          <div className="text-lg font-medium mb-2">{t('No allocation data available')}</div>
+          <div className="text-sm">{t('for selected window')}</div>
           {windowOptions.length > 0 && (
             <div className="text-xs mt-2 text-slate-400">
-              Available windows: {windowOptions.map((o) => o.label).join(', ')}
+              {t('Available windows: {{value}}', { value: windowOptions.map((o) => o.label).join(', ') })}
             </div>
           )}
         </div>
@@ -225,7 +258,7 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
   const windowLabel =
     yearData.windowStart && yearData.windowEnd
       ? `${yearData.windowStart} → ${yearData.windowEnd}`
-      : selected?.label || 'Allocation window';
+      : selected?.label || t('Allocation window');
 
   return (
     <div>
@@ -251,26 +284,26 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
       {/* Allocation Summary */}
       <div className="bg-slate-50 rounded-lg p-4 mb-4">
         <div className="text-center mb-4">
-          <h3 className="text-lg font-semibold text-slate-900">Allocation Window</h3>
+          <h3 className="text-lg font-semibold text-slate-900">{t('Allocation Window')}</h3>
           <div className="text-xs text-slate-600 mt-1">{windowLabel}</div>
         </div>
         
         <div className="flex items-center gap-6 flex-wrap justify-center">
           <div className="text-center">
             <div className="text-2xl font-bold text-green-700">{usageBreakdown.usedDays}</div>
-            <div className="text-sm text-slate-600">Used (past)</div>
+            <div className="text-sm text-slate-600">{t('Used (past)')}</div>
           </div>
           <div className="text-center">
             <div className="text-2xl font-bold text-sky-600">{usageBreakdown.bookedDays}</div>
-            <div className="text-sm text-slate-600">Booked (future)</div>
+            <div className="text-sm text-slate-600">{t('Booked (future)')}</div>
           </div>
           <div className="text-center">
             <div className="text-2xl font-bold text-slate-500">{usageBreakdown.remainingDays}</div>
-            <div className="text-sm text-slate-600">Remaining</div>
+            <div className="text-sm text-slate-600">{t('Remaining')}</div>
           </div>
           <div className="text-center border-l border-slate-300 pl-6">
             <div className="text-2xl font-bold text-slate-900">{usageBreakdown.allowedDays}</div>
-            <div className="text-sm text-slate-600">Total Allocation</div>
+            <div className="text-sm text-slate-600">{t('Total Allocation')}</div>
           </div>
         </div>
 
@@ -286,7 +319,7 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
                     ? `${(usageBreakdown.usedDays / usageBreakdown.allowedDays) * 100}%` 
                     : '0%' 
                 }}
-                title={`Used: ${usageBreakdown.usedDays} days`}
+                title={t('Used: {{days}} days', { days: usageBreakdown.usedDays })}
               />
               {/* Booked segment (light blue) */}
               <div 
@@ -296,7 +329,7 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
                     ? `${(usageBreakdown.bookedDays / usageBreakdown.allowedDays) * 100}%` 
                     : '0%' 
                 }}
-                title={`Booked: ${usageBreakdown.bookedDays} days`}
+                title={t('Booked: {{days}} days', { days: usageBreakdown.bookedDays })}
               />
               {/* Remaining is implicit (bg-slate-200 background) */}
             </div>
@@ -305,15 +338,15 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
             <div className="mt-2 flex items-center justify-center gap-4 text-xs text-slate-600">
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 bg-green-700 rounded" />
-                Used (completed)
+                {t('Used (completed)')}
               </span>
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 bg-sky-400 rounded" />
-                Booked (upcoming)
+                {t('Booked (upcoming)')}
               </span>
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 bg-slate-200 rounded border border-slate-300" />
-                Remaining
+                {t('Remaining')}
               </span>
             </div>
           </div>
@@ -323,25 +356,34 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
       {/* Active Bookings and Special Dates */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="rounded-lg border p-3 bg-white">
-          <div className="font-medium mb-2">Active Booking Slots</div>
+          <div className="font-medium mb-2">{t('Active Booking Slots')}</div>
           <div className="text-sm text-slate-700 mb-1">
-            {activeBookingsData.used} of {activeBookingsData.used + activeBookingsData.remaining} used
+            {t('{{used}} of {{total}} used', {
+              used: activeBookingsData.used,
+              total: activeBookingsData.used + activeBookingsData.remaining,
+            })}
           </div>
           {activeBookingsData.shortTermCancelled > 0 && (
             <div className="text-xs text-amber-600 mt-1">
-              ⚠️ {activeBookingsData.shortTermCancelled} short-term cancellation{activeBookingsData.shortTermCancelled > 1 ? 's' : ''} 
-              ({activeBookingsData.penaltyDays} penalty days)
+              {t(
+                '{{count}} short-term cancellation{{suffix}} ({{days}} penalty days)',
+                {
+                  count: activeBookingsData.shortTermCancelled,
+                  suffix: activeBookingsData.shortTermCancelled > 1 ? 's' : '',
+                  days: activeBookingsData.penaltyDays,
+                },
+              )}
             </div>
           )}
         </div>
         
         <div className="rounded-lg border p-3 bg-white">
-          <div className="font-medium mb-2">Special Dates</div>
+          <div className="font-medium mb-2">{t('Special Dates')}</div>
           <div className="text-sm text-slate-700">
-            Type 1: {allocationData?.specialDates?.type1?.used || 0} / {allocationData?.specialDates?.type1?.total || 0}
+            {t('Type 1')}: {allocationData?.specialDates?.type1?.used || 0} / {allocationData?.specialDates?.type1?.total || 0}
           </div>
           <div className="text-sm text-slate-700">
-            Type 2: {allocationData?.specialDates?.type2?.used || 0} / {allocationData?.specialDates?.type2?.total || 0}
+            {t('Type 2')}: {allocationData?.specialDates?.type2?.used || 0} / {allocationData?.specialDates?.type2?.total || 0}
           </div>
         </div>
       </div>
@@ -353,13 +395,22 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
-            Cancellation Penalties
+            {t('Cancellation Penalties')}
           </div>
           <div className="text-sm text-amber-800 mb-3">
-            <strong>{yearData.penaltyDays} penalty day{yearData.penaltyDays !== 1 ? 's' : ''}</strong> from {yearData.penaltyBookings.length} cancelled booking{yearData.penaltyBookings.length !== 1 ? 's' : ''}
+            <strong>
+              {t('{{days}} penalty day{{suffix}}', {
+                days: yearData.penaltyDays,
+                suffix: yearData.penaltyDays !== 1 ? 's' : '',
+              })}
+            </strong>{' '}
+            {t('from {{count}} cancelled booking{{suffix}}', {
+              count: yearData.penaltyBookings.length,
+              suffix: yearData.penaltyBookings.length !== 1 ? 's' : '',
+            })}
           </div>
           <div className="text-xs text-amber-700 mb-3">
-            These days count as used unless rebooked (showing future penalties only)
+            {t('These days count as used unless rebooked (showing future penalties only)')}
           </div>
           
           {/* Detailed penalty bookings list */}
@@ -372,15 +423,18 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
                       {pb.startDate} to {pb.endDate}
                     </div>
                     <div className="text-xs text-slate-600 mt-1">
-                      Cancelled: {pb.cancelledAt}
+                      {t('Cancelled: {{value}}', { value: pb.cancelledAt })}
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="text-sm font-semibold text-amber-900">
-                      {pb.remainingPenaltyDays} day{pb.remainingPenaltyDays !== 1 ? 's' : ''}
+                      {t('{{days}} day{{suffix}}', {
+                        days: pb.remainingPenaltyDays,
+                        suffix: pb.remainingPenaltyDays !== 1 ? 's' : '',
+                      })}
                     </div>
                     <div className="text-xs text-slate-600">
-                      penalty
+                      {t('penalty')}
                     </div>
                   </div>
                 </div>
@@ -389,7 +443,11 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
                 {pb.rebookedDays > 0 && (
                   <div className="mt-2 pt-2 border-t border-amber-100">
                     <div className="text-xs text-green-700">
-                      ✓ {pb.rebookedDays} of {pb.originalDays} day{pb.originalDays !== 1 ? 's' : ''} refunded by other bookings
+                      {t('{{rebooked}} of {{original}} day{{suffix}} refunded by other bookings', {
+                        rebooked: pb.rebookedDays,
+                        original: pb.originalDays,
+                        suffix: pb.originalDays !== 1 ? 's' : '',
+                      })}
                     </div>
                     <div className="mt-1 h-1.5 bg-amber-100 rounded-full overflow-hidden">
                       <div 
@@ -408,9 +466,12 @@ export default function YearSelectorClient({ userId, assetId, allocation }: Year
       {/* Extra Days */}
       {(yearData.extraDaysUsed > 0 || yearData.extraDaysRemaining > 0) && (
         <div className="mt-4 rounded-lg border p-3 bg-white">
-          <div className="font-medium mb-2">Extra Days</div>
+          <div className="font-medium mb-2">{t('Extra Days')}</div>
           <div className="text-sm text-slate-700">
-            Used: {yearData.extraDaysUsed} | Remaining: {yearData.extraDaysRemaining}
+            {t('Used: {{used}} | Remaining: {{remaining}}', {
+              used: yearData.extraDaysUsed,
+              remaining: yearData.extraDaysRemaining,
+            })}
           </div>
         </div>
       )}

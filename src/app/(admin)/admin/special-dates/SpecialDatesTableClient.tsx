@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { clientFetchJson } from '@/lib/api.client';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import { mapCommonApiError } from '@/lib/i18n/errorMap';
 
 type Asset = { _id: string; name: string; type: string };
 type SpecialDate = {
@@ -16,6 +18,7 @@ type SpecialDate = {
 type AssetsResp = { success: boolean; data: Asset[] };
 
 export default function SpecialDatesTableClient({ specialDates: initialSpecialDates }: { specialDates: SpecialDate[] }) {
+  const { t, locale, formatDate } = useI18n();
   const [specialDates, setSpecialDates] = useState<SpecialDate[]>(initialSpecialDates);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -51,18 +54,18 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
       const start = new Date(startDate + 'T00:00:00');
       const end = new Date(endDate + 'T00:00:00');
       if (end < start) {
-        setDateError('End date must be on or after start date');
+        setDateError(t('End date must be on or after start date'));
       } else {
         setDateError(null);
       }
     } else {
       setDateError(null);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, t]);
 
   const handleCreateSpecialDate = async () => {
     if (!name || !startDate || !endDate) {
-      setSubmitError('Name, start date, and end date are required');
+      setSubmitError(t('Name, start date, and end date are required'));
       return;
     }
 
@@ -72,7 +75,7 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
     }
 
     if (!applyToAllAssets && !selectedAssetId) {
-      setSubmitError('Please select an asset or choose "Apply to all assets"');
+      setSubmitError(t('Please select an asset or choose \"Apply to all assets\"'));
       return;
     }
 
@@ -108,14 +111,14 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
       // Reload page to show new special date
       window.location.reload();
     } catch (err: any) {
-      setSubmitError(err?.message || 'Failed to create special date');
+      setSubmitError(mapCommonApiError(locale, err?.message || 'Failed to create special date', 'Error'));
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleDeleteSpecialDate = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this special date?')) {
+    if (!confirm(t('Are you sure you want to delete this special date?'))) {
       return;
     }
 
@@ -127,7 +130,7 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
       // Remove from local state
       setSpecialDates(prev => prev.filter(sd => sd._id !== id));
     } catch (err: any) {
-      alert(err?.message || 'Failed to delete special date');
+      alert(mapCommonApiError(locale, err?.message || 'Failed to delete special date', 'Error'));
     }
   };
 
@@ -147,45 +150,45 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">Special Dates</h1>
+        <h1 className="text-2xl font-semibold">{t('Special Dates')}</h1>
         <button
           onClick={() => setShowAddForm(v => !v)}
           className="rounded bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800"
         >
-          {showAddForm ? 'Cancel' : 'Add Special Date'}
+          {showAddForm ? t('Cancel') : t('Add Special Date')}
         </button>
       </div>
 
       {showAddForm && (
         <div className="mb-6 rounded-xl border bg-white shadow-sm p-6">
-          <h2 className="text-lg font-semibold mb-4">Create New Special Date</h2>
+          <h2 className="text-lg font-semibold mb-4">{t('Create New Special Date')}</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col">
-              <label className="text-sm text-slate-600 mb-1">Type *</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Type')} *</label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as 'type1' | 'type2')}
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
               >
-                <option value="type1">Type 1</option>
-                <option value="type2">Type 2</option>
+                <option value="type1">{t('Type 1')}</option>
+                <option value="type2">{t('Type 2')}</option>
               </select>
             </div>
 
             <div className="flex flex-col">
-              <label className="text-sm text-slate-600 mb-1">Name *</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Name')} *</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
-                placeholder="e.g., Christmas Period"
+                placeholder={t('e.g., Christmas Period')}
               />
             </div>
 
             <div className="flex flex-col">
-              <label className="text-sm text-slate-600 mb-1">Start Date *</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Start Date')} *</label>
               <input
                 type="date"
                 value={startDate}
@@ -195,7 +198,7 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
             </div>
 
             <div className="flex flex-col">
-              <label className="text-sm text-slate-600 mb-1">End Date *</label>
+              <label className="text-sm text-slate-600 mb-1">{t('End Date')} *</label>
               <input
                 type="date"
                 value={endDate}
@@ -210,7 +213,7 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
             </div>
 
             <div className="flex flex-col">
-              <label className="text-sm text-slate-600 mb-1">Repeat Yearly</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Repeat Yearly')}</label>
               <div className="flex items-center">
                 <input
                   type="checkbox"
@@ -219,13 +222,13 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
                   className="mr-2"
                 />
                 <span className="text-sm text-slate-600">
-                  Repeat this special date every year
+                  {t('Repeat this special date every year')}
                 </span>
               </div>
             </div>
 
             <div className="flex flex-col">
-              <label className="text-sm text-slate-600 mb-1">Apply to</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Apply to')}</label>
               <div className="space-y-2">
                 <label className="flex items-center">
                   <input
@@ -234,7 +237,7 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
                     onChange={() => setApplyToAllAssets(true)}
                     className="mr-2"
                   />
-                  All assets (universal)
+                  {t('All assets (universal)')}
                 </label>
                 <label className="flex items-center">
                   <input
@@ -243,20 +246,20 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
                     onChange={() => setApplyToAllAssets(false)}
                     className="mr-2"
                   />
-                  Specific asset
+                  {t('Specific asset')}
                 </label>
               </div>
             </div>
 
             {!applyToAllAssets && (
               <div className="flex flex-col">
-                <label className="text-sm text-slate-600 mb-1">Select Asset *</label>
+                <label className="text-sm text-slate-600 mb-1">{t('Select Asset')} *</label>
                 <select
                   value={selectedAssetId}
                   onChange={(e) => setSelectedAssetId(e.target.value)}
                   className="border rounded-lg px-3 py-2 bg-white shadow-sm"
                 >
-                  <option value="">Choose an asset...</option>
+                  <option value="">{t('Choose an asset...')}</option>
                   {assets.map((asset) => (
                     <option key={asset._id} value={asset._id}>
                       {asset.name} ({asset.type})
@@ -269,10 +272,7 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
 
           <div className="mt-6 p-4 bg-slate-50 rounded-lg">
             <p className="text-sm text-slate-600">
-              <strong>Note:</strong> Special dates affect booking rules. Type 1 and Type 2 special dates 
-              have separate restrictions - users can have at most one active booking of each type 
-              when booking more than 60 days in advance. You can create one-day special dates by 
-              setting the same start and end date.
+              <strong>{t('Note:')}</strong> {t('Special dates affect booking rules. Type 1 and Type 2 special dates have separate restrictions - users can have at most one active booking of each type when booking more than 60 days in advance. You can create one-day special dates by setting the same start and end date.')}
             </p>
           </div>
 
@@ -288,14 +288,14 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
               disabled={submitting}
               className="flex-1 px-4 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
             >
-              Cancel
+              {t('Cancel')}
             </button>
             <button
               onClick={handleCreateSpecialDate}
               disabled={submitting || !name || !startDate || !endDate || !!dateError}
               className="flex-1 px-4 py-2 text-sm rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
             >
-              {submitting ? 'Creating...' : 'Create Special Date'}
+              {submitting ? t('Creating...') : t('Create Special Date')}
             </button>
           </div>
         </div>
@@ -305,12 +305,12 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
         <table className="min-w-[800px] w-full text-sm">
           <thead className="bg-slate-50 border-b">
             <tr>
-              <th className="text-left p-3">Type</th>
-              <th className="text-left p-3">Name</th>
-              <th className="text-left p-3">Date Range</th>
-              <th className="text-left p-3">Repeat</th>
-              <th className="text-left p-3">Asset</th>
-              <th className="text-left p-3">Actions</th>
+              <th className="text-left p-3">{t('Type')}</th>
+              <th className="text-left p-3">{t('Name')}</th>
+              <th className="text-left p-3">{t('Date Range')}</th>
+              <th className="text-left p-3">{t('Repeat')}</th>
+              <th className="text-left p-3">{t('Asset')}</th>
+              <th className="text-left p-3">{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -322,36 +322,36 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
                       ? 'bg-blue-100 text-blue-800' 
                       : 'bg-green-100 text-green-800'
                   }`}>
-                    {sd.type === 'type1' ? 'Type 1' : 'Type 2'}
+                    {sd.type === 'type1' ? t('Type 1') : t('Type 2')}
                   </span>
                 </td>
                 <td className="p-3 font-medium text-slate-800">{sd.name}</td>
                 <td className="p-3">
                   {new Date(sd.startDate).getTime() === new Date(sd.endDate).getTime() ? (
                     <span className="text-slate-600">
-                      {new Date(sd.startDate).toLocaleDateString()}
-                      <span className="text-xs text-slate-500 ml-1">(One day)</span>
+                      {formatDate(new Date(sd.startDate))}
+                      <span className="text-xs text-slate-500 ml-1">({t('One day')})</span>
                     </span>
                   ) : (
                     <span className="text-slate-600">
-                      {new Date(sd.startDate).toLocaleDateString()} - {new Date(sd.endDate).toLocaleDateString()}
+                      {formatDate(new Date(sd.startDate))} - {formatDate(new Date(sd.endDate))}
                     </span>
                   )}
                 </td>
                 <td className="p-3">
                   {sd.repeatYearly ? (
                     <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      Yearly
+                      {t('Yearly')}
                     </span>
                   ) : (
-                    <span className="text-slate-500">One-time</span>
+                    <span className="text-slate-500">{t('One-time')}</span>
                   )}
                 </td>
                 <td className="p-3">
                   {sd.asset ? (
                     <span className="text-slate-600">{sd.asset.name}</span>
                   ) : (
-                    <span className="text-slate-500 italic">All assets</span>
+                    <span className="text-slate-500 italic">{t('All assets')}</span>
                   )}
                 </td>
                 <td className="p-3">
@@ -359,7 +359,7 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
                     onClick={() => handleDeleteSpecialDate(sd._id)}
                     className="text-red-600 hover:text-red-800 text-sm"
                   >
-                    Delete
+                    {t('Delete')}
                   </button>
                 </td>
               </tr>
@@ -367,7 +367,7 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
             {specialDates.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-slate-500">
-                  No special dates found. Click &quot;Add Special Date&quot; to create one.
+                  {t('No special dates found. Click \"Add Special Date\" to create one.')}
                 </td>
               </tr>
             )}

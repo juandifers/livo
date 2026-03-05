@@ -8,6 +8,7 @@ function getBackendConfig() {
 
   const raw =
     process.env.LIVO_BACKEND_API_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     fallbackApiBase;
 

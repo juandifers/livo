@@ -7,6 +7,7 @@ import AssetBookingsTableClient from './AssetBookingsTableClient';
 import YearSelectorClient from '../../../users/[userId]/bookings/YearSelectorClient';
 import AssetOwnersAllocationClient from './AssetOwnersAllocationClient';
 import ExportButtons from './ExportButtons';
+import { getServerI18n } from '@/lib/i18n/server';
 
 type Booking = {
   _id: string;
@@ -24,6 +25,7 @@ type AllocationResp = { success: boolean; data: { allowedDaysPerYear: number; da
 export const dynamic = 'force-dynamic';
 
 export default async function AssetBookingsPage({ params }: { params: Promise<{ assetId: string }> }) {
+  const { t } = await getServerI18n();
   const { assetId } = await params;
   // Prefer dedicated endpoint for asset bookings
   const res = await serverFetchJson<BookingsResp>(`/bookings/asset/${encodeURIComponent(assetId)}`);
@@ -52,14 +54,14 @@ export default async function AssetBookingsPage({ params }: { params: Promise<{ 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">{assetName} Bookings</h1>
+        <h1 className="text-2xl font-semibold">{assetName} {t('Bookings')}</h1>
         <div className="flex items-center gap-4">
           <ExportButtons 
             bookings={bookings} 
             owners={ownerAllocations} 
             assetName={assetName} 
           />
-          <Link href="/admin/assets" className="text-sm text-slate-600 hover:text-slate-900">← Back to Assets</Link>
+          <Link href="/admin/assets" className="text-sm text-slate-600 hover:text-slate-900">← {t('Back to Assets')}</Link>
         </div>
       </div>
       <AssetCalendarClient assetId={assetId} />
@@ -76,5 +78,4 @@ export default async function AssetBookingsPage({ params }: { params: Promise<{ 
     </div>
   );
 }
-
 

@@ -1,12 +1,16 @@
 'use client';
 import { useState } from 'react';
 import Link from 'next/link';
+import Cookies from 'js-cookie';
 import { clientFetchJson } from '@/lib/api.client';
+import { useI18n } from '@/lib/i18n/I18nProvider';
+import { mapCommonApiError } from '@/lib/i18n/errorMap';
 
 type Owner = { user?: { _id: string; name?: string; lastName?: string; email: string } | string; sharePercentage: number };
 type Asset = { _id: string; name: string; type?: string; location?: string; owners?: Owner[] };
 
 export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
+  const { t, locale } = useI18n();
   const [showAddAsset, setShowAddAsset] = useState(false);
   const [name, setName] = useState('');
   const [type, setType] = useState<'boat' | 'home'>('home');
@@ -21,7 +25,7 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
 
   const handleCreateAsset = async () => {
     if (!name || !location) {
-      setSubmitError('Name and location are required');
+      setSubmitError(t('Name and location are required'));
       return;
     }
 
@@ -59,7 +63,7 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
           });
         } catch (photoError) {
           console.error('Photo upload failed:', photoError);
-          setSubmitError('Asset created but photo upload failed. You can add photos later.');
+          setSubmitError(t('Asset created but photo upload failed. You can add photos later.'));
         }
       }
 
@@ -77,7 +81,7 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
       // Reload page to show new asset
       window.location.reload();
     } catch (err: any) {
-      setSubmitError(err?.message || 'Failed to create asset');
+      setSubmitError(mapCommonApiError(locale, err?.message || 'Failed to create asset', 'Error'));
     } finally {
       setSubmitting(false);
     }
@@ -85,14 +89,15 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
 
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
+    const MAX_FILE_SIZE = 4 * 1024 * 1024; // Keep below Vercel request cap
     const validFiles = files.filter(file => {
       const isValidType = file.type.startsWith('image/');
-      const isValidSize = file.size <= 5 * 1024 * 1024; // 5MB limit
+      const isValidSize = file.size <= MAX_FILE_SIZE;
       return isValidType && isValidSize;
     });
 
     if (validFiles.length !== files.length) {
-      setSubmitError('Some files were rejected. Only images under 5MB are allowed.');
+      setSubmitError(t('Some files were rejected. Only images under 4MB are allowed.'));
     }
 
     const newPhotos = [...photos, ...validFiles];
@@ -117,22 +122,35 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
   const uploadPhotos = async (assetId: string) => {
     if (photos.length === 0) return [];
 
-    const formData = new FormData();
-    photos.forEach(photo => {
+    const token = Cookies.get('token');
+    const headers: HeadersInit = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const uploadedUrls: string[] = [];
+
+    // Upload one photo per request to stay under platform body limits.
+    for (const photo of photos) {
+      const formData = new FormData();
       formData.append('photos', photo);
-    });
 
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/assets/${assetId}/photos`, {
-      method: 'POST',
-      body: formData,
-    });
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/assets/${assetId}/photos`, {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+        headers,
+      });
 
-    if (!response.ok) {
-      throw new Error('Failed to upload photos');
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(body || 'Failed to upload photos');
+      }
+
+      const result = await response.json();
+      const urls = result?.data?.photoUrls || [];
+      uploadedUrls.push(...urls);
     }
 
-    const result = await response.json();
-    return result.data.photoUrls;
+    return uploadedUrls;
   };
 
   const handleCancelAdd = () => {
@@ -151,90 +169,90 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">Assets</h1>
+        <h1 className="text-2xl font-semibold">{t('Assets')}</h1>
         <button
           onClick={() => setShowAddAsset(v => !v)}
           className="rounded bg-slate-900 text-white px-4 py-2 text-sm hover:bg-slate-800"
         >
-          {showAddAsset ? 'Cancel' : 'Add New Asset'}
+          {showAddAsset ? t('Cancel') : t('Add New Asset')}
         </button>
       </div>
 
       {showAddAsset && (
         <div className="mb-6 rounded-xl border bg-white shadow-sm p-6">
-          <h2 className="text-lg font-semibold mb-4">Create New Asset</h2>
+          <h2 className="text-lg font-semibold mb-4">{t('Create New Asset')}</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col">
-              <label className="text-sm text-slate-600 mb-1">Asset Name *</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Asset Name')} *</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
-                placeholder="e.g., Luxury Villa Marbella"
+                placeholder={t('e.g., Luxury Villa Marbella')}
               />
             </div>
 
             <div className="flex flex-col">
-              <label className="text-sm text-slate-600 mb-1">Type *</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Type')} *</label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as 'boat' | 'home')}
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
               >
-                <option value="home">Home</option>
-                <option value="boat">Boat</option>
+                <option value="home">{t('Home')}</option>
+                <option value="boat">{t('Boat')}</option>
               </select>
             </div>
 
             <div className="flex flex-col md:col-span-2">
-              <label className="text-sm text-slate-600 mb-1">Location *</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Location')} *</label>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
-                placeholder="e.g., Marbella, Spain"
+                placeholder={t('e.g., Marbella, Spain')}
               />
             </div>
 
             <div className="flex flex-col md:col-span-2">
-              <label className="text-sm text-slate-600 mb-1">Description</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Description')}</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
                 rows={3}
-                placeholder="Brief description of the asset..."
+                placeholder={t('Brief description of the asset...')}
               />
             </div>
 
             <div className="flex flex-col">
-              <label className="text-sm text-slate-600 mb-1">Capacity (guests)</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Capacity (guests)')}</label>
               <input
                 type="number"
                 value={capacity}
                 onChange={(e) => setCapacity(e.target.value)}
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
-                placeholder="e.g., 8"
+                placeholder={t('e.g., 8')}
                 min="1"
               />
             </div>
 
             <div className="flex flex-col">
-              <label className="text-sm text-slate-600 mb-1">Amenities (comma-separated)</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Amenities (comma-separated)')}</label>
               <input
                 type="text"
                 value={amenities}
                 onChange={(e) => setAmenities(e.target.value)}
                 className="border rounded-lg px-3 py-2 bg-white shadow-sm"
-                placeholder="e.g., Pool, WiFi, Parking"
+                placeholder={t('e.g., Pool, WiFi, Parking')}
               />
             </div>
 
             <div className="flex flex-col md:col-span-2">
-              <label className="text-sm text-slate-600 mb-1">Photos</label>
+              <label className="text-sm text-slate-600 mb-1">{t('Photos')}</label>
               <div className="border-2 border-dashed border-slate-300 rounded-lg p-4">
                 <input
                   type="file"
@@ -251,8 +269,8 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
                   <svg className="w-8 h-8 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                   </svg>
-                  <span className="text-sm">Click to upload photos</span>
-                  <span className="text-xs text-slate-500">Max 5MB per image</span>
+                  <span className="text-sm">{t('Click to upload photos')}</span>
+                  <span className="text-xs text-slate-500">{t('Max 4MB per image')}</span>
                 </label>
               </div>
               
@@ -281,8 +299,7 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
 
           <div className="mt-6 p-4 bg-slate-50 rounded-lg">
             <p className="text-sm text-slate-600">
-              <strong>Note:</strong> The asset will be created with 0% ownership. 
-              Ownership shares can be added later as they are sold through the asset&apos;s booking page.
+              <strong>{t('Note:')}</strong> {t('The asset will be created with 0% ownership. Ownership shares can be added later as they are sold through the asset booking page.')}
             </p>
           </div>
 
@@ -298,14 +315,14 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
               disabled={submitting}
               className="flex-1 px-4 py-2 text-sm rounded border border-slate-300 hover:bg-slate-50 disabled:opacity-50"
             >
-              Cancel
+              {t('Cancel')}
             </button>
             <button
               onClick={handleCreateAsset}
               disabled={submitting || !name || !location}
               className="flex-1 px-4 py-2 text-sm rounded bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50"
             >
-              {submitting ? 'Creating...' : 'Create Asset'}
+              {submitting ? t('Creating...') : t('Create Asset')}
             </button>
           </div>
         </div>
@@ -315,12 +332,12 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
         <table className="min-w-[800px] w-full text-sm">
           <thead className="bg-slate-50 border-b">
             <tr>
-              <th className="text-left p-3">Photo</th>
-              <th className="text-left p-3">Name</th>
-              <th className="text-left p-3">Type</th>
-              <th className="text-left p-3">Location</th>
-              <th className="text-left p-3">Ownership</th>
-              <th className="text-left p-3">Actions</th>
+              <th className="text-left p-3">{t('Photo')}</th>
+              <th className="text-left p-3">{t('Name')}</th>
+              <th className="text-left p-3">{t('Type')}</th>
+              <th className="text-left p-3">{t('Location')}</th>
+              <th className="text-left p-3">{t('Ownership')}</th>
+              <th className="text-left p-3">{t('Actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -348,8 +365,8 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
               // Construct photo URL
               const getPhotoUrl = (photoUrl: string) => {
                 if (photoUrl.startsWith('http')) return photoUrl;
-                const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace('/api', '') || '';
-                return `${baseUrl}${photoUrl}`;
+                if (photoUrl.startsWith('/')) return photoUrl;
+                return `/${photoUrl}`;
               };
 
               // Placeholder images based on asset type
@@ -399,13 +416,13 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
                         href={`/admin/assets/${a._id}/bookings`}
                         className="inline-block rounded bg-slate-900 text-white px-3 py-1.5 text-xs hover:bg-slate-800 text-center"
                       >
-                        View bookings
+                        {t('View bookings')}
                       </Link>
                       <Link
                         href={`/admin/assets/${a._id}/edit`}
                         className="inline-block rounded border border-slate-300 text-slate-700 px-3 py-1.5 text-xs hover:bg-slate-50 text-center"
                       >
-                        Edit
+                        {t('Edit')}
                       </Link>
                     </div>
                   </td>
@@ -415,7 +432,7 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
             {assets.length === 0 && (
               <tr>
                 <td colSpan={6} className="p-6 text-center text-slate-500">
-                  No assets found. Click &quot;Add New Asset&quot; to create one.
+                  {t('No assets found. Click \"Add New Asset\" to create one.')}
                 </td>
               </tr>
             )}
@@ -425,4 +442,3 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
     </div>
   );
 }
-
