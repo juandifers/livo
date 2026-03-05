@@ -90,7 +90,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
     }
 
     userBookingsRequestRef.current = (async () => {
-      const result = await bookingApi.getUserBookings();
+      const result = await bookingApi.getUserBookings({ forceRefresh: force });
       if (!result.success) {
         throw new Error(result.error || 'Failed to load user bookings');
       }

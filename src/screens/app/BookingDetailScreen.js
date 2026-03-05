@@ -20,7 +20,7 @@ import { getCurrentApiConfig } from '../../config';
 import { useI18n } from '../../i18n';
 
 const BookingDetailScreen = ({ route, navigation }) => {
-  const { bookingId, booking: initialBooking } = route.params;
+  const { bookingId, booking: initialBooking, onBookingUpdated } = route.params;
   const resolvedBookingId = bookingId || initialBooking?._id;
   const { t, formatDate, mapApiError } = useI18n();
   const [booking, setBooking] = useState(initialBooking || null);
@@ -139,11 +139,23 @@ const BookingDetailScreen = ({ route, navigation }) => {
               setIsCancelling(false);
               
               if (result.success) {
-                // Update the local booking state to reflect cancellation
-                setBooking({
-                  ...booking,
-                  status: 'cancelled'
-                });
+                const payload = result?.data;
+                const payloadBooking = (payload && typeof payload.booking === 'object') ? payload.booking : payload;
+                const mergedBooking = {
+                  ...(booking || {}),
+                  ...((payloadBooking && typeof payloadBooking === 'object') ? payloadBooking : {}),
+                  status: 'cancelled',
+                  cancelledAt:
+                    (payloadBooking && typeof payloadBooking === 'object' && payloadBooking.cancelledAt)
+                      ? payloadBooking.cancelledAt
+                      : (booking?.cancelledAt || new Date().toISOString())
+                };
+
+                // Update detail screen + parent list immediately.
+                setBooking(mergedBooking);
+                if (typeof onBookingUpdated === 'function') {
+                  onBookingUpdated(mergedBooking);
+                }
                 
                 const successMessage = isShortTermBooking
                   ? t('Short-term booking cancelled. Note that this will still count against your allocation unless another owner books these dates.')
