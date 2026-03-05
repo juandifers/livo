@@ -15,8 +15,10 @@
     "fix-june-special-dates": "node tools/fix-june-special-dates.js",
     "sync-special-dates": "node tools/sync-all-special-dates.js",
     "test": "jest --runInBand",
+    "test:rules:traceability": "node scripts/verify-rule-traceability.mjs",
     "test:rules": "jest --runInBand tests/booking-rules",
-    "test:date:contract": "jest --runInBand tests/date-contract"
+    "test:date:contract": "jest --runInBand tests/date-contract",
+    "test:booking:gate": "npm run test:rules:traceability && npm run test:rules && npm run test:date:contract"
   },
   "keywords": [
     "booking",
