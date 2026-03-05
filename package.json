@@ -14,7 +14,9 @@
     "diagnose-june": "node tools/diagnose-june-booking.js",
     "fix-june-special-dates": "node tools/fix-june-special-dates.js",
     "sync-special-dates": "node tools/sync-all-special-dates.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest --runInBand",
+    "test:rules": "jest --runInBand tests/booking-rules",
+    "test:date:contract": "jest --runInBand tests/date-contract"
   },
   "keywords": [
     "booking",
@@ -39,6 +41,8 @@
     "nodemailer": "^6.9.4"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1"
+    "jest": "^30.0.5",
+    "nodemon": "^3.0.1",
+    "supertest": "^7.1.1"
   }
 }

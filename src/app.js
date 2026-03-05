@@ -105,8 +105,10 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// Connect to database (safe for local + serverless)
-connectDB();
+// Avoid implicit DB connections in Jest; test setup owns the lifecycle.
+if (process.env.NODE_ENV !== 'test') {
+  connectDB();
+}
 
 // Error handler middleware
 app.use((err, req, res, _next) => {
