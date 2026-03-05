@@ -6,6 +6,11 @@ import { getToken, removeToken } from '../utils/tokenStorage';
 // Get API configuration based on environment
 const apiConfig = getCurrentApiConfig();
 
+if (__DEV__) {
+  // Helps verify which backend the app is targeting during local development.
+  console.log(`[Livo API] baseURL=${apiConfig.baseURL}`);
+}
+
 // Create an axios instance
 const apiClient = axios.create({
   baseURL: apiConfig.baseURL,

@@ -35,6 +35,8 @@ const es = {
   'Account Deleted': 'Cuenta eliminada',
   'Your account has been deleted successfully.': 'Tu cuenta se elimino correctamente.',
   'Failed to delete account': 'No se pudo eliminar la cuenta',
+  'Account deletion endpoint is unavailable. Please update backend deployment.': 'El endpoint para eliminar cuenta no esta disponible. Actualiza el despliegue del backend.',
+  'Unable to reach server. Please check your connection and try again.': 'No se pudo conectar con el servidor. Revisa tu conexion e intenta de nuevo.',
   'Current password is incorrect': 'La contrasena actual es incorrecta',
   'You have upcoming bookings. Cancel them before deleting your account.': 'Tienes reservas futuras. Cancelalas antes de eliminar tu cuenta.',
   'You cannot delete your account while you are an owner of one or more assets. Please contact an administrator.': 'No puedes eliminar tu cuenta mientras seas propietario de uno o mas activos. Contacta a un administrador.',

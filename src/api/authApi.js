@@ -3,6 +3,46 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { testUser } from '../utils/testData';
 import { getToken, removeToken, setToken } from '../utils/tokenStorage';
 
+const parseApiErrorMessage = (error, fallbackMessage) => {
+  const data = error?.response?.data;
+
+  if (Array.isArray(data?.errors) && data.errors.length > 0) {
+    const first = data.errors[0];
+    if (typeof first?.msg === 'string' && first.msg.trim()) {
+      return first.msg.trim();
+    }
+  }
+
+  if (typeof data?.error === 'string' && data.error.trim()) {
+    const message = data.error.trim();
+    if (/User role 'user' is not authorized/i.test(message)) {
+      return 'Account deletion endpoint is unavailable. Please update backend deployment.';
+    }
+    return message;
+  }
+
+  if (typeof data?.message === 'string' && data.message.trim()) {
+    return data.message.trim();
+  }
+
+  if (typeof data === 'string' && data.trim()) {
+    const compact = data.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (/Cannot DELETE .*\/api\/auth\/me/i.test(compact)) {
+      return 'Account deletion endpoint is unavailable. Please update backend deployment.';
+    }
+    if (/Cannot DELETE .*\/api\/users\/me/i.test(compact)) {
+      return 'Account deletion endpoint is unavailable. Please update backend deployment.';
+    }
+    return compact;
+  }
+
+  if (!error?.response) {
+    return 'Unable to reach server. Please check your connection and try again.';
+  }
+
+  return fallbackMessage;
+};
+
 // Auth API endpoints
 const login = async (email, password) => {
   try {
@@ -88,12 +128,29 @@ const deleteMyAccount = async (currentPassword, confirmationText) => {
       return { success: true };
     }
 
-    await apiClient.delete('/auth/me', {
-      data: {
-        currentPassword,
-        confirmationText
+    const payload = { currentPassword, confirmationText };
+
+    try {
+      await apiClient.delete('/auth/me', { data: payload });
+    } catch (primaryError) {
+      const status = primaryError?.response?.status;
+      const raw = primaryError?.response?.data;
+      const rawText = typeof raw === 'string' ? raw : '';
+      const authMeUnavailable =
+        status === 404 ||
+        status === 405 ||
+        /Cannot DELETE .*\/api\/auth\/me/i.test(rawText);
+
+      if (!authMeUnavailable) {
+        return {
+          success: false,
+          error: parseApiErrorMessage(primaryError, 'Failed to delete account')
+        };
       }
-    });
+
+      // Backward compatibility for deployments where self-delete still lives at /users/me.
+      await apiClient.delete('/users/me', { data: payload });
+    }
 
     await removeToken();
     await AsyncStorage.removeItem('user');
@@ -101,7 +158,7 @@ const deleteMyAccount = async (currentPassword, confirmationText) => {
   } catch (error) {
     return {
       success: false,
-      error: error.response?.data?.error || error.response?.data?.message || 'Failed to delete account'
+      error: parseApiErrorMessage(error, 'Failed to delete account')
     };
   }
 };
