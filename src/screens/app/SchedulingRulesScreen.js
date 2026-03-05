@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, StatusBar } from 'react-native';
+import { useI18n } from '../../i18n';
 
 const Bullet = ({ children }) => (
   <View style={styles.bulletRow}>
@@ -9,31 +10,32 @@ const Bullet = ({ children }) => (
 );
 
 const SchedulingRulesScreen = () => {
+  const { t } = useI18n();
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Smart Scheduling Rules</Text>
+        <Text style={styles.title}>{t('Smart Scheduling Rules')}</Text>
 
-        <Text style={styles.subtitle}>General</Text>
-        <Bullet>Maximum stay per booking: 14 days</Bullet>
-        <Bullet>Bookings can be made up to 2 years in advance</Bullet>
-        <Bullet>Minimum stay: 2 days for properties, 1 day for boats</Bullet>
+        <Text style={styles.subtitle}>{t('General')}</Text>
+        <Bullet>{t('Maximum stay per booking: 14 days')}</Bullet>
+        <Bullet>{t('Bookings can be made up to 2 years in advance')}</Bullet>
+        <Bullet>{t('Minimum stay: 2 days for properties, 1 day for boats')}</Bullet>
 
-        <Text style={styles.subtitle}>Gap Rule</Text>
-        <Bullet>The rest period between bookings must be at least as long as the previous stay (exclusive days in between). Example: a 2-day stay ending on the 24th requires the 25th and 26th clear; earliest start is the 27th.</Bullet>
+        <Text style={styles.subtitle}>{t('Gap Rule')}</Text>
+        <Bullet>{t('The rest period between bookings must be at least as long as the previous stay (exclusive days in between). Example: a 2-day stay ending on the 24th requires the 25th and 26th clear; earliest start is the 27th.')}</Bullet>
 
-        <Text style={styles.subtitle}>Special Dates</Text>
-        <Bullet>Type 1 (red) and Type 2 (purple) dates are shown on the calendar and details screens</Bullet>
-        <Bullet>When booking more than 60 days in advance, you may hold at most one active Type 1 and one active Type 2 special date at a time. This cap lifts within 60 days.</Bullet>
+        <Text style={styles.subtitle}>{t('Special Dates')}</Text>
+        <Bullet>{t('Type 1 (red) and Type 2 (purple) dates are shown on the calendar and details screens')}</Bullet>
+        <Bullet>{t('When booking more than 60 days in advance, you may hold at most one active Type 1 and one active Type 2 special date at a time. This cap lifts within 60 days.')}</Bullet>
 
-        <Text style={styles.subtitle}>Short-term Windows</Text>
-        <Bullet>Last minute: under 7 days notice. May use extra allocation; extra cost only applies if standard allocation is insufficient.</Bullet>
-        <Bullet>Short term: 7–60 days notice. Flexible rules; uses standard allocation.</Bullet>
+        <Text style={styles.subtitle}>{t('Short-term Windows')}</Text>
+        <Bullet>{t('Last minute: under 7 days notice. May use extra allocation; extra cost only applies if standard allocation is insufficient.')}</Bullet>
+        <Bullet>{t('Short term: 7–60 days notice. Flexible rules; uses standard allocation.')}</Bullet>
 
-        <Text style={styles.subtitle}>Allocation</Text>
-        <Bullet>Each 1/8 share (12.5%) grants 44 days per anniversary year</Bullet>
-        <Bullet>Allocation resets on your ownership anniversary</Bullet>
+        <Text style={styles.subtitle}>{t('Allocation')}</Text>
+        <Bullet>{t('Each 1/8 share (12.5%) grants 44 days per anniversary year')}</Bullet>
+        <Bullet>{t('Allocation resets on your ownership anniversary')}</Bullet>
       </ScrollView>
     </SafeAreaView>
   );
@@ -50,5 +52,4 @@ const styles = StyleSheet.create({
 });
 
 export default SchedulingRulesScreen;
-
 

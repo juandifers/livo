@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -8,41 +8,106 @@ import {
   ActivityIndicator, 
   Alert,
   Image,
+  Linking,
   SafeAreaView,
-  StatusBar
+  StatusBar,
+  Platform
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { bookingApi } from '../../api';
-import { format } from 'date-fns';
-import { showCalendarSelection, formatBookingDuration } from '../../utils/calendarUtils';
+import { assetApi, bookingApi } from '../../api';
+import { showCalendarSelection } from '../../utils/calendarUtils';
+import { getCurrentApiConfig } from '../../config';
+import { useI18n } from '../../i18n';
 
 const BookingDetailScreen = ({ route, navigation }) => {
   const { bookingId, booking: initialBooking } = route.params;
+  const resolvedBookingId = bookingId || initialBooking?._id;
+  const { t, formatDate, mapApiError } = useI18n();
   const [booking, setBooking] = useState(initialBooking || null);
-  const [isLoading, setIsLoading] = useState(!initialBooking);
+  const [isLoading, setIsLoading] = useState(!initialBooking && Boolean(resolvedBookingId));
   const [isCancelling, setIsCancelling] = useState(false);
+  const hydratedAssetIdsRef = useRef(new Set());
 
-  const loadBookingDetails = async () => {
-    if (!initialBooking) {
+  useEffect(() => {
+    let isActive = true;
+
+    const loadBookingDetails = async () => {
+      if (!resolvedBookingId) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        setIsLoading(true);
-        // Fetch booking details - this endpoint is not implemented in the API yet
-        // This is a placeholder for when the API is updated
-        const result = await bookingApi.getBookingById(bookingId);
-        if (result.success) {
+        if (!initialBooking) {
+          setIsLoading(true);
+        }
+        const result = await bookingApi.getBookingById(resolvedBookingId);
+        if (isActive && result.success && result.data) {
           setBooking(result.data);
         }
       } catch (error) {
         console.error('Error loading booking details:', error);
       } finally {
-        setIsLoading(false);
+        if (isActive) {
+          setIsLoading(false);
+        }
       }
-    }
-  };
+    };
+
+    loadBookingDetails();
+
+    return () => {
+      isActive = false;
+    };
+  }, [resolvedBookingId, initialBooking]);
 
   useEffect(() => {
-    loadBookingDetails();
-  }, [bookingId]);
+    let isActive = true;
+
+    const hydrateAssetDetails = async () => {
+      if (!booking) return;
+
+      const rawAsset = booking.asset;
+      const assetId = typeof rawAsset === 'string' ? rawAsset : rawAsset?._id;
+      if (!assetId) return;
+      if (hydratedAssetIdsRef.current.has(String(assetId))) return;
+
+      const currentPropertyManager =
+        (typeof rawAsset === 'object' && rawAsset?.propertyManager) || booking.propertyManager || {};
+      const hasPropertyManager = Boolean(
+        currentPropertyManager?.name || currentPropertyManager?.phone || currentPropertyManager?.email
+      );
+      const hasPhotos = Array.isArray(rawAsset?.photos) && rawAsset.photos.length > 0;
+      const hasLocationAddress = Boolean(rawAsset?.locationAddress || booking.locationAddress);
+
+      // Fetch full asset only when booking payload is partial.
+      if (hasPropertyManager && hasPhotos && hasLocationAddress) {
+        return;
+      }
+
+      hydratedAssetIdsRef.current.add(String(assetId));
+      const assetResult = await assetApi.getAssetById(assetId);
+      if (!isActive || !assetResult?.success || !assetResult?.data) return;
+
+      setBooking((prev) => {
+        if (!prev) return prev;
+        const prevAsset = typeof prev.asset === 'object' && prev.asset ? prev.asset : { _id: assetId };
+        return {
+          ...prev,
+          asset: {
+            ...prevAsset,
+            ...assetResult.data
+          }
+        };
+      });
+    };
+
+    hydrateAssetDetails();
+
+    return () => {
+      isActive = false;
+    };
+  }, [booking]);
 
   const handleCancelBooking = () => {
     // Check if this is a short-term booking (within 60 days)
@@ -52,25 +117,25 @@ const BookingDetailScreen = ({ route, navigation }) => {
     
     const isShortTermBooking = daysUntilBooking <= 60;
     
-    const title = 'Cancel Booking';
+    const title = t('Cancel Booking');
     const message = isShortTermBooking 
-      ? `⚠️ Short-term Cancellation Warning\n\nThis booking is within 60 days of the start date. If you cancel now, these days will still count against your allocation unless someone else books these dates.\n\nAre you sure you want to cancel?`
-      : 'Are you sure you want to cancel this booking?';
+      ? t('⚠️ Short-term Cancellation Warning\n\nThis booking is within 60 days of the start date. If you cancel now, these days will still count against your allocation unless someone else books these dates.\n\nAre you sure you want to cancel?')
+      : t('Are you sure you want to cancel this booking?');
     
     Alert.alert(
       title,
       message,
       [
         {
-          text: 'No',
+          text: t('No'),
           style: 'cancel',
         },
         {
-          text: 'Yes',
+          text: t('Yes'),
           onPress: async () => {
             try {
               setIsCancelling(true);
-              const result = await bookingApi.cancelBooking(bookingId);
+              const result = await bookingApi.cancelBooking(resolvedBookingId);
               setIsCancelling(false);
               
               if (result.success) {
@@ -81,12 +146,12 @@ const BookingDetailScreen = ({ route, navigation }) => {
                 });
                 
                 const successMessage = isShortTermBooking
-                  ? 'Short-term booking cancelled. Note that this will still count against your allocation unless another owner books these dates.'
-                  : 'Booking has been cancelled';
+                  ? t('Short-term booking cancelled. Note that this will still count against your allocation unless another owner books these dates.')
+                  : t('Booking has been cancelled');
                 
-                Alert.alert('Success', successMessage, [
+                Alert.alert(t('Success'), successMessage, [
                   {
-                    text: 'OK',
+                    text: t('OK'),
                     onPress: () => {
                       // Navigate back to refresh the bookings list
                       navigation.goBack();
@@ -94,11 +159,11 @@ const BookingDetailScreen = ({ route, navigation }) => {
                   }
                 ]);
               } else {
-                Alert.alert('Error', result.error || 'Failed to cancel booking');
+                Alert.alert(t('Error'), mapApiError(result.error || 'Failed to cancel booking'));
               }
             } catch (error) {
               setIsCancelling(false);
-              Alert.alert('Error', 'An unexpected error occurred');
+              Alert.alert(t('Error'), t('An unexpected error occurred'));
               console.error('Error cancelling booking:', error);
             }
           },
@@ -121,27 +186,48 @@ const BookingDetailScreen = ({ route, navigation }) => {
 
   const handleAddToCalendar = async () => {
     if (!booking) {
-      Alert.alert('Error', 'Booking details not available');
+      Alert.alert(t('Error'), t('Booking details not available'));
       return;
     }
 
     // Mock asset data - in a real app, this would come from the booking or API
     const asset = {
-      name: booking.assetName || 'Aquarii',
-      location: booking.location || 'Cartagena, Colombia',
-      type: booking.assetType || 'boat'
+      name: booking?.asset?.name || booking.assetName || 'Aquarii',
+      location: booking?.asset?.locationAddress || booking?.asset?.location || booking.location || 'Cartagena, Colombia',
+      type: booking?.asset?.type || booking.assetType || 'boat'
     };
 
     try {
       await showCalendarSelection(booking, asset);
     } catch (error) {
       console.error('Error adding to calendar:', error);
-      Alert.alert('Error', 'Unable to add booking to calendar');
+      Alert.alert(t('Error'), t('Unable to add booking to calendar'));
     }
   };
 
   // Get asset image based on type
   const getAssetImage = () => {
+    const asset = booking?.asset || {};
+    const firstPhoto = Array.isArray(asset.photos) && asset.photos.length > 0
+      ? asset.photos[0]
+      : null;
+
+    if (firstPhoto) {
+      if (typeof firstPhoto === 'string') {
+        if (firstPhoto.startsWith('http://') || firstPhoto.startsWith('https://')) {
+          return firstPhoto;
+        }
+
+        const apiConfig = getCurrentApiConfig();
+        const baseUrl = apiConfig.baseURL.replace('/api', '');
+        return `${baseUrl}${firstPhoto.startsWith('/') ? '' : '/'}${firstPhoto}`;
+      }
+
+      if (typeof firstPhoto === 'object' && typeof firstPhoto.url === 'string') {
+        return firstPhoto.url;
+      }
+    }
+
     if (booking?.asset?.type === 'boat') {
       return 'https://images.unsplash.com/photo-1564834744159-ff0ea41ba4b9?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1000&q=80';
     } else {
@@ -161,12 +247,12 @@ const BookingDetailScreen = ({ route, navigation }) => {
     return (
       <View style={styles.errorContainer}>
         <MaterialIcons name="error-outline" size={48} color="#999" />
-        <Text style={styles.errorText}>Booking not found</Text>
+        <Text style={styles.errorText}>{t('Booking not found')}</Text>
         <TouchableOpacity 
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backButtonText}>Go Back</Text>
+          <Text style={styles.backButtonText}>{t('Go Back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -184,20 +270,27 @@ const BookingDetailScreen = ({ route, navigation }) => {
   // Helper function to determine booking status display
   const getBookingStatus = (booking) => {
     if (booking.status === 'cancelled') {
-      return { text: 'CANCELLED', color: '#dc3545' }; // Red color for cancelled
+      return { text: 'CANCELLED_STATUS', color: '#dc3545' }; // Red color for cancelled
     }
     
     const now = new Date();
     const endDate = new Date(booking.endDate);
     
     if (endDate < now) {
-      return { text: 'PAST', color: '#6c757d' }; // Gray color for past
+      return { text: 'PAST_STATUS', color: '#6c757d' }; // Gray color for past
     } else {
-      return { text: 'UPCOMING', color: '#1E4640' }; // Green color for upcoming
+      return { text: 'UPCOMING_STATUS', color: '#1E4640' }; // Green color for upcoming
     }
   };
 
   const bookingStatus = getBookingStatus(booking);
+  const bookingAsset = booking?.asset || {};
+  const bookingAddress = bookingAsset.locationAddress || booking.locationAddress || bookingAsset.location || booking.location || '';
+  const propertyManager = bookingAsset.propertyManager || booking.propertyManager || {};
+  const managerName = typeof propertyManager.name === 'string' ? propertyManager.name.trim() : '';
+  const managerPhone = typeof propertyManager.phone === 'string' ? propertyManager.phone.trim() : '';
+  const managerEmail = typeof propertyManager.email === 'string' ? propertyManager.email.trim() : '';
+  const hasManagerInfo = Boolean(managerName || managerPhone || managerEmail);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -222,7 +315,7 @@ const BookingDetailScreen = ({ route, navigation }) => {
           {/* Asset Name and Status */}
           <View style={styles.assetNameContainer}>
             <Text style={styles.assetName}>
-              {booking.asset.name}
+              {bookingAsset.name || booking.assetName || t('Asset')}
             </Text>
             <View style={[styles.statusBadge, { backgroundColor: bookingStatus.color }]}>
               <Text style={styles.statusText}>{bookingStatus.text}</Text>
@@ -232,19 +325,19 @@ const BookingDetailScreen = ({ route, navigation }) => {
 
         {/* Booking Details */}
         <View style={styles.detailsContainer}>
-          <Text style={styles.sectionTitle}>Booking Details</Text>
+          <Text style={styles.sectionTitle}>{t('Booking Details')}</Text>
         
           
           {/* Booking Type */}
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Booking Type</Text>
-            <Text style={styles.detailValue}>{booking.bookingType || 'Short'}</Text>
+            <Text style={styles.detailLabel}>{t('Booking Type')}</Text>
+            <Text style={styles.detailValue}>{booking.bookingType || t('Short')}</Text>
           </View>
 
           {/* Special Date Type (if applicable) */}
           {specialTypeLabel && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Special Date</Text>
+              <Text style={styles.detailLabel}>{t('Special Date')}</Text>
               <Text style={[styles.detailValue, { color: booking.specialDateType === 'type1' ? '#ff6b6b' : '#6200ee' }]}>
                 {specialTypeLabel}
               </Text>
@@ -253,9 +346,9 @@ const BookingDetailScreen = ({ route, navigation }) => {
           
           {/* Booking Date */}
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Booking Date</Text>
+            <Text style={styles.detailLabel}>{t('Booking Date')}</Text>
             <Text style={styles.detailValue}>
-              {format(new Date(booking.startDate), 'dd MMM, yyyy')} - {format(new Date(booking.endDate), 'dd MMM, yyyy')} ( {durationNights} NIGHTS, {durationDays} DAYS )
+              {formatDate(new Date(booking.startDate), 'dd MMM, yyyy')} - {formatDate(new Date(booking.endDate), 'dd MMM, yyyy')} ( {durationNights} NIGHTS, {durationDays} DAYS )
             </Text>
           </View>
           
@@ -267,13 +360,13 @@ const BookingDetailScreen = ({ route, navigation }) => {
             style={styles.policiesButton}
             onPress={() => navigation.navigate('CancellationPolicies')}
           >
-            <Text style={styles.policiesText}>CANCELLATION POLICIES</Text>
+            <Text style={styles.policiesText}>{t('CANCELLATION POLICIES')}</Text>
             <MaterialIcons name="info" size={24} color="#000" />
           </TouchableOpacity>
           
           {/* Add To Calendar */}
           <TouchableOpacity style={styles.addToCalendarRow} onPress={handleAddToCalendar}>
-            <Text style={styles.addToCalendarText}>Add To Calendar</Text>
+            <Text style={styles.addToCalendarText}>{t('Add To Calendar')}</Text>
             <View style={styles.addToCalendarIcon}>
               <MaterialIcons name="event" size={24} color="#000" />
               <MaterialIcons name="chevron-right" size={24} color="#000" />
@@ -283,85 +376,53 @@ const BookingDetailScreen = ({ route, navigation }) => {
           {/* Location */}
           <View style={styles.locationRow}>
             <View>
-              <Text style={styles.locationLabel}>Location Address</Text>
-              <Text style={styles.locationValue}>{booking.asset.location || 'Cartagena'}</Text>
+              <Text style={styles.locationLabel}>{t('Location Address')}</Text>
+              <Text style={styles.locationValue}>{bookingAddress || t('Unknown Location')}</Text>
             </View>
             <TouchableOpacity 
               style={styles.mapButton}
               onPress={() => {
                 try {
-                  const address = booking?.asset?.location || '';
+                  const address = bookingAddress;
                   if (!address) return;
                   const url = Platform.select({
                     ios: `http://maps.apple.com/?q=${encodeURIComponent(address)}`,
                     android: `geo:0,0?q=${encodeURIComponent(address)}`
                   });
                   if (url) {
-                    const { Linking } = require('react-native');
                     Linking.openURL(url);
                   }
-                } catch (e) {}
+                } catch (_e) {}
               }}
             >
-              <Text style={styles.mapButtonText}>SHOW ON MAP</Text>
+              <Text style={styles.mapButtonText}>{t('SHOW ON MAP')}</Text>
               <MaterialIcons name="chevron-right" size={24} color="#000" />
             </TouchableOpacity>
           </View>
           
           {/* Property Manager */}
-          <View style={styles.managerSection}>
-            <Text style={styles.managerTitle}>Property Manager details</Text>
-            <View style={styles.managerContainer}>
-              <Image
-                source={{ uri: 'https://randomuser.me/api/portraits/men/32.jpg' }}
-                style={styles.managerImage}
-              />
+          {hasManagerInfo && (
+            <View style={styles.managerSection}>
+              <Text style={styles.managerTitle}>{t('Property Manager details')}</Text>
               <View style={styles.managerInfo}>
-                <Text style={styles.managerName}>Andrea Molina</Text>
-                <View style={styles.managerContact}>
-                  <MaterialIcons name="phone" size={16} color="#000" />
-                  <Text style={styles.managerContactText}>+573204836784</Text>
-                </View>
-                <View style={styles.managerContact}>
-                  <MaterialIcons name="email" size={16} color="#000" />
-                  <Text style={styles.managerContactText}>andrea@livo.co</Text>
-                </View>
+                {managerName ? (
+                  <Text style={styles.managerName}>{managerName}</Text>
+                ) : null}
+                {managerPhone ? (
+                  <View style={styles.managerContact}>
+                    <MaterialIcons name="phone" size={16} color="#000" />
+                    <Text style={styles.managerContactText}>{managerPhone}</Text>
+                  </View>
+                ) : null}
+                {managerEmail ? (
+                  <View style={styles.managerContact}>
+                    <MaterialIcons name="email" size={16} color="#000" />
+                    <Text style={styles.managerContactText}>{managerEmail}</Text>
+                  </View>
+                ) : null}
               </View>
             </View>
-          </View>
-          
-          {/* Booking Confirmation Code */}
-          <View style={styles.codeSection}>
-            <Text style={styles.codeTitle}>Booking Confirmation Code</Text>
-            <View style={styles.codeContainer}>
-              <Text style={styles.codeValue}>#1000764</Text>
-              <TouchableOpacity style={styles.copyButton}>
-                <MaterialIcons name="content-copy" size={24} color="#000" />
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* Door Entry Code */}
-          <View style={styles.codeSection}>
-            <Text style={styles.codeTitle}>Door Entry Code</Text>
-            <View style={styles.codeContainer}>
-              <Text style={styles.codeValue}>Available 48 hrs prior to arrival</Text>
-              <TouchableOpacity style={styles.copyButton}>
-                <MaterialIcons name="content-copy" size={24} color="#000" />
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* WiFi Password */}
-          <View style={styles.codeSection}>
-            <Text style={styles.codeTitle}>Wifi Password</Text>
-            <View style={styles.codeContainer}>
-              <Text style={styles.codeValue}>Available 48 hrs prior to arrival</Text>
-              <TouchableOpacity style={styles.copyButton}>
-                <MaterialIcons name="content-copy" size={24} color="#000" />
-              </TouchableOpacity>
-            </View>
-          </View>
+          )}
           
           {/* Action Buttons - hide when booking is cancelled */}
           {booking.status !== 'cancelled' && (
@@ -372,7 +433,7 @@ const BookingDetailScreen = ({ route, navigation }) => {
                 disabled={isCancelling}
               >
                 <Text style={styles.cancelBookingText}>
-                  {isCancelling ? 'Cancelling...' : 'Cancel Booking'}
+                  {isCancelling ? t('Cancelling...') : t('Cancel Booking')}
                 </Text>
               </TouchableOpacity>
               
@@ -380,7 +441,7 @@ const BookingDetailScreen = ({ route, navigation }) => {
                 style={styles.modifyBookingButton}
                 onPress={handleModifyBooking}
               >
-                <Text style={styles.modifyBookingText}>Modify Booking</Text>
+                <Text style={styles.modifyBookingText}>{t('Modify Booking')}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -559,16 +620,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 15
   },
-  managerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  managerImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    marginRight: 15
-  },
   managerInfo: {
     flex: 1
   },
@@ -585,32 +636,6 @@ const styles = StyleSheet.create({
   managerContactText: {
     fontSize: 14,
     marginLeft: 10
-  },
-  codeSection: {
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderColor: '#eee'
-  },
-  codeTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10
-  },
-  codeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: '#eee',
-    borderRadius: 10,
-    paddingVertical: 15,
-    paddingHorizontal: 20
-  },
-  codeValue: {
-    fontSize: 16
-  },
-  copyButton: {
-    padding: 5
   },
   actionButtonsContainer: {
     flexDirection: 'row',

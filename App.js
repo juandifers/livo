@@ -4,6 +4,7 @@ import { Provider as PaperProvider } from 'react-native-paper';
 import { LogBox } from 'react-native';
 import { AuthProvider } from './src/context/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import { I18nProvider } from './src/i18n';
 
 // Ignore specific LogBox warnings
 LogBox.ignoreLogs([
@@ -16,10 +17,12 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <PaperProvider>
-        <AuthProvider>
-          <AppNavigator />
-        </AuthProvider>
+        <I18nProvider>
+          <AuthProvider>
+            <AppNavigator />
+          </AuthProvider>
+        </I18nProvider>
       </PaperProvider>
     </SafeAreaProvider>
   );
-} 
+}

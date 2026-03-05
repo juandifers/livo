@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -13,15 +13,20 @@ import { TextInput, Button } from 'react-native-paper';
 import { Formik } from 'formik';
 import * as Yup from 'yup';
 import { authApi } from '../../api';
-
-const validationSchema = Yup.object().shape({
-  email: Yup.string()
-    .email('Please enter a valid email')
-    .required('Email is required'),
-});
+import { useI18n } from '../../i18n';
 
 const ForgotPasswordScreen = ({ navigation }) => {
+  const { t, mapApiError } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
+  const validationSchema = useMemo(
+    () =>
+      Yup.object().shape({
+        email: Yup.string()
+          .email(t('Please enter a valid email'))
+          .required(t('Email is required')),
+      }),
+    [t]
+  );
 
   const handleForgotPassword = async (values) => {
     setIsLoading(true);
@@ -30,12 +35,12 @@ const ForgotPasswordScreen = ({ navigation }) => {
     
     if (result.success) {
       Alert.alert(
-        'Reset Link Sent',
-        'If an account exists with this email, you will receive a password reset link.',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        t('Reset Link Sent'),
+        t('If an account exists with this email, you will receive a password reset link.'),
+        [{ text: t('OK'), onPress: () => navigation.navigate('Login') }]
       );
     } else {
-      Alert.alert('Error', result.error);
+      Alert.alert(t('Error'), mapApiError(result.error));
     }
   };
 
@@ -49,13 +54,13 @@ const ForgotPasswordScreen = ({ navigation }) => {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backButtonText}>← Back to Login</Text>
+          <Text style={styles.backButtonText}>{t('← Back to Login')}</Text>
         </TouchableOpacity>
         
         <View style={styles.headerContainer}>
-          <Text style={styles.headerText}>Forgot Password</Text>
+          <Text style={styles.headerText}>{t('Forgot Password')}</Text>
           <Text style={styles.subHeaderText}>
-            Enter your email address and we'll send you a link to reset your password.
+            {t('Enter your email address and we will send you a link to reset your password.')}
           </Text>
         </View>
         
@@ -67,7 +72,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
           {({ handleChange, handleBlur, handleSubmit, values, errors, touched }) => (
             <View style={styles.formContainer}>
               <TextInput
-                label="Email"
+                label={t('Email')}
                 value={values.email}
                 onChangeText={handleChange('email')}
                 onBlur={handleBlur('email')}
@@ -87,7 +92,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
                 loading={isLoading}
                 disabled={isLoading}
               >
-                Send Reset Link
+                {t('Send Reset Link')}
               </Button>
             </View>
           )}

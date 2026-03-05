@@ -16,17 +16,20 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { bookingApi, assetApi } from '../../api';
-import { format, addDays, addMonths, isSameDay, isWithinInterval, isBefore, getMonth, getYear, getDaysInMonth, startOfMonth, getDay } from 'date-fns';
+import { addDays, addMonths, isSameDay, isWithinInterval, isBefore, getMonth, getYear, getDaysInMonth, startOfMonth, getDay } from 'date-fns';
 import { showCalendarSelection } from '../../utils/calendarUtils';
 import { useAuth } from '../../context/AuthContext';
 import { validateBooking, determineBookingType, getBookingTypeInfo, BOOKING_TYPES, checkSpecialDateOverlap } from '../../utils/bookingValidation';
 import DateUtils from '../../utils/dateUtils';
+import { useI18n } from '../../i18n';
 
 const { width } = Dimensions.get('window');
 
 const CreateBookingScreen = ({ route, navigation }) => {
   const { asset: navigationAsset, editBooking, onBookingUpdated } = route.params || {};
+  const alertContext = route?.params?.alertContext || null;
   const { user } = useAuth(); // Get current user from AuthContext
+  const { t, formatDate, weekdaysShort, mapApiError } = useI18n();
   
   const [asset, setAsset] = useState(navigationAsset || null);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,7 +54,14 @@ const CreateBookingScreen = ({ route, navigation }) => {
   const [specialDates, setSpecialDates] = useState([]);
   const [userBookingsThisYear, setUserBookingsThisYear] = useState([]);
   const [userAllocation, setUserAllocation] = useState(null);
+  const [alertHighlightRange, setAlertHighlightRange] = useState(null);
   const monthListRef = useRef(null);
+  const availabilityInFlightRef = useRef(false);
+  const userBookingsRequestRef = useRef(null);
+  const userBookingsCacheRef = useRef({ data: null, fetchedAt: 0 });
+  const lastAssetRefreshAtRef = useRef(0);
+  const skipNextFocusRefreshRef = useRef(true);
+  const lastHandledAlertNonceRef = useRef(null);
   // Track which month is currently visible using FlatList viewability API
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
@@ -65,10 +75,41 @@ const CreateBookingScreen = ({ route, navigation }) => {
       }
     } catch (e) {}
   }).current;
+
+  const fetchUserBookings = useCallback(async ({ force = false } = {}) => {
+    const now = Date.now();
+    const cacheTtlMs = 1500;
+    const cached = userBookingsCacheRef.current;
+
+    if (!force && cached.data && now - cached.fetchedAt < cacheTtlMs) {
+      return cached.data;
+    }
+
+    if (userBookingsRequestRef.current) {
+      return userBookingsRequestRef.current;
+    }
+
+    userBookingsRequestRef.current = (async () => {
+      const result = await bookingApi.getUserBookings();
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to load user bookings');
+      }
+      userBookingsCacheRef.current = {
+        data: result.data,
+        fetchedAt: Date.now()
+      };
+      return result.data;
+    })();
+
+    try {
+      return await userBookingsRequestRef.current;
+    } finally {
+      userBookingsRequestRef.current = null;
+    }
+  }, []);
   
   // Load unavailable dates and special dates for the asset
   useEffect(() => {
-    loadAssetAvailability();
     generateMonths();
     loadAvailableAssets();
     loadCurrentUserBookings();
@@ -135,10 +176,13 @@ const CreateBookingScreen = ({ route, navigation }) => {
   // Update availability when asset changes
   useEffect(() => {
     if (asset && user) {
-      loadAssetAvailability();
-      loadCurrentUserBookings();
-      // Load allocation for current user and selected asset
       (async () => {
+        await Promise.all([
+          loadAssetAvailability(),
+          loadCurrentUserBookings()
+        ]);
+
+        // Load allocation for current user and selected asset
         try {
           const result = await bookingApi.getUserAllocation(user._id, asset._id);
           if (result.success) {
@@ -149,6 +193,9 @@ const CreateBookingScreen = ({ route, navigation }) => {
         } catch (e) {
           setUserAllocation(null);
         }
+
+        lastAssetRefreshAtRef.current = Date.now();
+        skipNextFocusRefreshRef.current = false;
       })();
     }
   }, [asset, user]);
@@ -157,12 +204,76 @@ const CreateBookingScreen = ({ route, navigation }) => {
   useFocusEffect(
     useCallback(() => {
       if (asset && user) {
+        if (skipNextFocusRefreshRef.current) {
+          skipNextFocusRefreshRef.current = false;
+          return;
+        }
+
+        // Ignore immediate focus events that follow an asset/user-triggered refresh.
+        if (Date.now() - lastAssetRefreshAtRef.current < 1000) {
+          return;
+        }
+
+        lastAssetRefreshAtRef.current = Date.now();
         loadAssetAvailability();
         loadCurrentUserBookings();
         loadUserBookingsThisYear();
       }
     }, [asset, user])
   );
+
+  const parseAlertDate = useCallback((dateStr) => {
+    if (!dateStr || typeof dateStr !== 'string') return null;
+    const parsed = new Date(`${dateStr}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }, []);
+
+  useEffect(() => {
+    const nonce = alertContext?.nonce;
+    if (!nonce) return;
+    if (lastHandledAlertNonceRef.current === nonce) return;
+    if (!months.length) return;
+
+    const parsedStart = parseAlertDate(alertContext?.startDate);
+    const parsedEnd = parseAlertDate(alertContext?.endDate);
+    if (!parsedStart || !parsedEnd) return;
+
+    lastHandledAlertNonceRef.current = nonce;
+
+    const targetAssetId = alertContext?.asset?._id;
+    if (targetAssetId) {
+      const fullAsset = availableAssets.find((candidate) => candidate?._id === targetAssetId);
+      setAsset(fullAsset || alertContext.asset);
+    }
+
+    setStartDate(null);
+    setEndDate(null);
+    setSelectedDates([]);
+    setValidationResults(null);
+    setBookingTypeInfo(null);
+    setAlertHighlightRange({
+      start: parsedStart,
+      end: parsedEnd
+    });
+
+    const targetMonth = new Date(parsedStart.getFullYear(), parsedStart.getMonth(), 1);
+    setCurrentMonth(targetMonth);
+
+    const monthIndex = months.findIndex((monthDate) =>
+      getMonth(monthDate) === getMonth(targetMonth) &&
+      getYear(monthDate) === getYear(targetMonth)
+    );
+
+    if (monthIndex >= 0 && monthListRef.current) {
+      setTimeout(() => {
+        try {
+          monthListRef.current.scrollToIndex({ index: monthIndex, animated: true });
+        } catch (e) {
+          // Best effort: keep month title synced even if scrolling fails.
+        }
+      }, 30);
+    }
+  }, [alertContext, months, availableAssets, parseAlertDate]);
   
   const generateMonths = () => {
     // Generate 24 months starting from the current month
@@ -180,8 +291,13 @@ const CreateBookingScreen = ({ route, navigation }) => {
       console.log('⚠️ No asset selected, skipping availability load');
       return;
     }
+
+    if (availabilityInFlightRef.current) {
+      return;
+    }
     
     try {
+      availabilityInFlightRef.current = true;
       console.log('🔍 Loading availability for asset:', asset.name);
       setIsLoading(true);
       
@@ -228,26 +344,28 @@ const CreateBookingScreen = ({ route, navigation }) => {
         const special1 = (specialDates.type1 || []).map(dateStr => new Date(dateStr + 'T00:00:00'));
         const special2 = (specialDates.type2 || []).map(dateStr => new Date(dateStr + 'T00:00:00'));
         
-        // Add booked dates to unavailable dates
+        // Add booked dates to unavailable dates (supports both range and day-entry payloads)
         bookings.forEach(booking => {
           // Parse dates with proper timezone handling - handle both YYYY-MM-DD and ISO formats
           let startDate, endDate;
           
-          // Check if booking has valid date properties
-          if (!booking.startDate || !booking.endDate) {
-            console.warn('⚠️ Booking missing date properties:', booking);
-            return;
-          }
-          
-          // Check if the date is already in YYYY-MM-DD format or ISO format
-          if (booking.startDate.includes('T')) {
-            // ISO format - convert to local date
-            startDate = new Date(booking.startDate.split('T')[0] + 'T00:00:00');
-            endDate = new Date(booking.endDate.split('T')[0] + 'T00:00:00');
+          if (booking.startDate && booking.endDate) {
+            // Check if the date is already in YYYY-MM-DD format or ISO format
+            if (booking.startDate.includes('T')) {
+              // ISO format - convert to local date
+              startDate = new Date(booking.startDate.split('T')[0] + 'T00:00:00');
+              endDate = new Date(booking.endDate.split('T')[0] + 'T00:00:00');
+            } else {
+              // YYYY-MM-DD format - create local date
+              startDate = new Date(booking.startDate + 'T00:00:00');
+              endDate = new Date(booking.endDate + 'T00:00:00');
+            }
+          } else if (booking.date && typeof booking.date === 'string') {
+            // Availability endpoint may return one entry per date.
+            startDate = new Date(booking.date + 'T00:00:00');
+            endDate = new Date(booking.date + 'T00:00:00');
           } else {
-            // YYYY-MM-DD format - create local date
-            startDate = new Date(booking.startDate + 'T00:00:00');
-            endDate = new Date(booking.endDate + 'T00:00:00');
+            return;
           }
           
           const currentDate = new Date(startDate);
@@ -306,14 +424,15 @@ const CreateBookingScreen = ({ route, navigation }) => {
         handleDateSelection(editEndDate);
       }
       
-      setIsLoading(false);
     } catch (error) {
-      setIsLoading(false);
       console.error('❌ Error loading asset availability:', error.message);
       // Set empty arrays if there's an error
       setUnavailableDates([]);
       setSpecialDatesType1([]);
       setSpecialDatesType2([]);
+    } finally {
+      availabilityInFlightRef.current = false;
+      setIsLoading(false);
     }
   };
   
@@ -321,6 +440,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
   const handleAssetSelection = (selectedAsset) => {
     setAsset(selectedAsset);
     setShowAssetDropdown(false);
+    setAlertHighlightRange(null);
   };
   
   // Toggle dropdown
@@ -336,9 +456,9 @@ const CreateBookingScreen = ({ route, navigation }) => {
     >
       <View style={styles.assetItemContent}>
         <Text style={styles.assetItemName}>
-          {item?.name || 'Unknown Asset'}
+          {item?.name || t('Unknown Asset')}
         </Text>
-        <Text style={styles.assetItemLocation}>{item?.location || 'Unknown Location'}</Text>
+        <Text style={styles.assetItemLocation}>{item?.location || t('Unknown Location')}</Text>
       </View>
       {asset && asset._id === item?._id && (
         <MaterialIcons name="check" size={24} color="#1E4640" />
@@ -360,6 +480,9 @@ const CreateBookingScreen = ({ route, navigation }) => {
       // Normalize date to midnight to ensure consistent calculations
       const normalizedDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
       console.log('✅ Date normalized to midnight:', normalizedDate);
+
+      // Any manual date interaction should clear contextual alert highlighting.
+      setAlertHighlightRange(null);
       
       // Additional safety check - ensure date has proper methods
       if (!normalizedDate.getTime || typeof normalizedDate.getTime !== 'function') {
@@ -387,7 +510,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
       console.log('🔍 Checking if date is unavailable for booking...');
       if (isDateUnavailableForBooking(normalizedDate)) {
         console.log('❌ Date is unavailable for booking');
-      Alert.alert('Date Unavailable', 'This date is not available for booking.');
+      Alert.alert(t('Date Unavailable'), t('This date is not available for booking.'));
       return;
     }
       console.log('✅ Date is available for booking');
@@ -454,7 +577,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
         console.log('🔍 Checking if date range is valid...');
         if (isDateUnavailableForBooking(startDate) || isDateUnavailableForBooking(normalizedDate)) {
           console.log('❌ Date range includes unavailable dates');
-        Alert.alert('Invalid Selection', 'Your selection includes unavailable dates.');
+        Alert.alert(t('Invalid Selection'), t('Your selection includes unavailable dates.'));
         return;
       }
       
@@ -567,7 +690,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
       console.error('💥 Error stack:', error.stack);
       console.error('💥 Date that caused error:', date);
       console.error('💥 Current state:', { startDate, endDate, selectedDates: selectedDates?.length });
-      Alert.alert('Error', 'There was an error selecting the date. Please try again.');
+      Alert.alert(t('Error'), t('There was an error selecting the date. Please try again.'));
     }
   }, [startDate, endDate, isDateUnavailableForBooking]);
   
@@ -582,6 +705,19 @@ const CreateBookingScreen = ({ route, navigation }) => {
     
     return dates;
   };
+
+  const isDateInAlertHighlightRange = useCallback((date) => {
+    try {
+      if (!alertHighlightRange || !date || !date.getTime || isNaN(date.getTime())) return false;
+      const start = alertHighlightRange.start;
+      const end = alertHighlightRange.end;
+      if (!start || !end || isNaN(start.getTime()) || isNaN(end.getTime())) return false;
+      return isWithinInterval(date, { start, end });
+    } catch (error) {
+      console.error('Error in isDateInAlertHighlightRange:', error);
+      return false;
+    }
+  }, [alertHighlightRange]);
   
   const isDateSelected = (date) => {
     try {
@@ -781,7 +917,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
       }
     });
     
-      const monthYear = format(month, 'MMMM yyyy');
+      const monthYear = formatDate(month, 'MMMM yyyy');
       return { weeks, monthYear };
     } catch (error) {
       console.error('Error in generateCalendarData:', error, 'Month:', month);
@@ -808,6 +944,9 @@ const CreateBookingScreen = ({ route, navigation }) => {
     const isSpecialType2 = isSpecialDateType2(date);
     const isStart = isStartDate(date);
     const isEnd = isEndDate(date);
+    const isAlertHighlighted = isDateInAlertHighlightRange(date);
+    const isAlertStart = !!(isAlertHighlighted && alertHighlightRange?.start && isSameDay(date, alertHighlightRange.start));
+    const isAlertEnd = !!(isAlertHighlighted && alertHighlightRange?.end && isSameDay(date, alertHighlightRange.end));
     
     // Get adjacent dates in the week to check for continuous selection
       const prevDate = index > 0 && week[index - 1] ? week[index - 1] : null;
@@ -816,6 +955,8 @@ const CreateBookingScreen = ({ route, navigation }) => {
       // Safely check if adjacent dates are selected
       const isPrevSelected = prevDate && prevDate.getTime && !isNaN(prevDate.getTime()) && isDateSelected(prevDate);
       const isNextSelected = nextDate && nextDate.getTime && !isNaN(nextDate.getTime()) && isDateSelected(nextDate);
+      const isPrevAlertHighlighted = prevDate && prevDate.getTime && !isNaN(prevDate.getTime()) && isDateInAlertHighlightRange(prevDate);
+      const isNextAlertHighlighted = nextDate && nextDate.getTime && !isNaN(nextDate.getTime()) && isDateInAlertHighlightRange(nextDate);
       
       // For current user bookings, check adjacent user booking dates for styling
       const isPrevUserBooking = prevDate && prevDate.getTime && !isNaN(prevDate.getTime()) && isCurrentUserBookingDate(prevDate);
@@ -839,6 +980,22 @@ const CreateBookingScreen = ({ route, navigation }) => {
         }
         if (isPrevUserBooking && isNextUserBooking) {
           cellStyle.push(styles.middleDay);
+        }
+      }
+
+      // Alert highlights represent freed ranges and are visual-only context.
+      if (isAlertHighlighted && !isCurrentUserBooking && !isOtherUserBooking && !isSelected) {
+        cellStyle.push(styles.alertHighlightedDay);
+        textStyle.push(styles.alertHighlightedDayText);
+
+        if (isAlertStart || !isPrevAlertHighlighted) {
+          cellStyle.push(styles.startDay, styles.alertHighlightStartDay);
+        }
+        if (isAlertEnd || !isNextAlertHighlighted) {
+          cellStyle.push(styles.endDay, styles.alertHighlightEndDay);
+        }
+        if ((isPrevAlertHighlighted && isNextAlertHighlighted) || (!isAlertStart && !isAlertEnd)) {
+          cellStyle.push(styles.middleDay, styles.alertHighlightMiddleDay);
         }
       }
       
@@ -897,7 +1054,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
       console.error('Error rendering day cell:', error, 'Date:', date);
       return <View key={`error-${index}`} style={styles.emptyCell} />;
     }
-  }, [startDate, endDate, selectedDates, unavailableDates, currentUserBookingDates, specialDatesType1, specialDatesType2, handleDateSelection]);
+  }, [startDate, endDate, selectedDates, unavailableDates, currentUserBookingDates, specialDatesType1, specialDatesType2, handleDateSelection, alertHighlightRange, isDateInAlertHighlightRange]);
   
   // Optimize month rendering with memoization
   const renderCalendarMonth = useCallback(({ item }) => {
@@ -910,13 +1067,11 @@ const CreateBookingScreen = ({ route, navigation }) => {
       <View style={styles.monthContainer}>
         <Text style={styles.monthTitle}>{monthYear}</Text>
         <View style={styles.weekdaysHeader}>
-          <Text style={styles.weekdayText}>Sun</Text>
-          <Text style={styles.weekdayText}>Mon</Text>
-          <Text style={styles.weekdayText}>Tue</Text>
-          <Text style={styles.weekdayText}>Wed</Text>
-          <Text style={styles.weekdayText}>Thu</Text>
-          <Text style={styles.weekdayText}>Fri</Text>
-          <Text style={styles.weekdayText}>Sat</Text>
+          {weekdaysShort.map((weekday) => (
+            <Text key={weekday} style={styles.weekdayText}>
+              {weekday}
+            </Text>
+          ))}
         </View>
         
         <View style={styles.weeksContainer}>
@@ -936,11 +1091,11 @@ const CreateBookingScreen = ({ route, navigation }) => {
       console.error('Error rendering calendar month:', error);
       return (
         <View style={styles.monthContainer}>
-          <Text style={styles.monthTitle}>Error loading month</Text>
+          <Text style={styles.monthTitle}>{t('Error loading month')}</Text>
         </View>
       );
     }
-  }, [generateCalendarData, renderDayCell]);
+  }, [generateCalendarData, renderDayCell, t, weekdaysShort]);
   
   // Create optimized getItemLayout for FlatList
   const getItemLayout = useCallback((data, index) => ({
@@ -978,30 +1133,30 @@ const CreateBookingScreen = ({ route, navigation }) => {
       console.log('handleContinueToBook called');
       
       if (!startDate || !endDate || selectedDates.length === 0) {
-        Alert.alert('Selection Required', 'Please select your booking dates.');
+        Alert.alert(t('Selection Required'), t('Please select your booking dates.'));
       return;
     }
     
       if (!asset || !asset._id) {
-        Alert.alert('Asset Required', 'Please select an asset to book.');
+        Alert.alert(t('Asset Required'), t('Please select an asset to book.'));
         return;
       }
       
       if (!user || !user._id) {
-        Alert.alert('Authentication Required', 'Please log in to create a booking.');
+        Alert.alert(t('Authentication Required'), t('Please log in to create a booking.'));
         return;
       }
       
       // Check validation results
       if (!validationResults) {
-        Alert.alert('Validation Pending', 'Please wait while we validate your booking.');
+        Alert.alert(t('Validation Pending'), t('Please wait while we validate your booking.'));
         return;
       }
       
       // Show validation errors if any
       if (!validationResults.isValid && validationResults.errors && validationResults.errors.length > 0) {
         const errorMessage = validationResults.errors.join('\n\n');
-        Alert.alert('Booking Not Available', errorMessage);
+        Alert.alert(t('Booking Not Available'), mapApiError(errorMessage, 'Booking Not Available'));
         return;
       }
       
@@ -1024,10 +1179,17 @@ const CreateBookingScreen = ({ route, navigation }) => {
       });
       
       // Show confirmation with validation warnings (if any) and booking type info
-      let confirmationMessage = `Do you want to book ${asset.name || 'this asset'} from ${format(startDate, 'dd MMM, yyyy')} to ${format(endDate, 'dd MMM, yyyy')}?`;
+      let confirmationMessage = t(
+        'Do you want to book {{asset}} from {{start}} to {{end}}?',
+        {
+          asset: asset.name || t('this asset'),
+          start: formatDate(startDate, 'dd MMM, yyyy'),
+          end: formatDate(endDate, 'dd MMM, yyyy'),
+        }
+      );
       
       if (bookingTypeInfo && bookingTypeInfo.title) {
-        confirmationMessage += `\n\nBooking Type: ${bookingTypeInfo.title}`;
+        confirmationMessage += `\n\n${t('Booking Type')}: ${bookingTypeInfo.title}`;
         if (bookingTypeInfo.description) {
           confirmationMessage += `\n${bookingTypeInfo.description}`;
         }
@@ -1036,30 +1198,30 @@ const CreateBookingScreen = ({ route, navigation }) => {
       if (validationResults.allocationInfo) {
         const { remainingDays = 0, bookingLength = 0 } = validationResults.allocationInfo;
         const remainingAfterBooking = Math.max(0, remainingDays - bookingLength);
-        confirmationMessage += `\n\nAllocation: ${bookingLength} days will be used, ${remainingAfterBooking} days remaining.`;
+        confirmationMessage += `\n\n${t('Allocation')}: ${bookingLength} ${t('days')} ${t('will be used')}, ${remainingAfterBooking} ${t('days remaining')}.`;
       }
       
       if (validationResults.warnings && Array.isArray(validationResults.warnings) && validationResults.warnings.length > 0) {
-        confirmationMessage += '\n\nWarnings:\n' + validationResults.warnings.join('\n');
+        confirmationMessage += `\n\n${t('Warnings')}:\n${validationResults.warnings.join('\n')}`;
       }
     
     Alert.alert(
-      'Confirm Booking',
+      t('Confirm Booking'),
         confirmationMessage,
       [
         {
-          text: 'Cancel',
+          text: t('Cancel'),
           style: 'cancel'
         },
         {
-          text: 'Confirm',
+          text: t('Confirm'),
           onPress: () => submitBooking(bookingData)
         }
       ]
     );
     } catch (error) {
       console.error('Error in handleContinueToBook:', error);
-      Alert.alert('Error', 'There was an error preparing your booking. Please try again.');
+      Alert.alert(t('Error'), t('There was an error preparing your booking. Please try again.'));
     }
   };
   
@@ -1101,11 +1263,11 @@ const CreateBookingScreen = ({ route, navigation }) => {
         
         // Show success message and navigation options
         Alert.alert(
-          'Booking Successful',
-          'Your booking has been confirmed. Would you like to add it to your calendar?',
+          t('Booking Successful'),
+          t('Your booking has been confirmed. Would you like to add it to your calendar?'),
           [
             { 
-              text: 'Skip', 
+              text: t('Skip'), 
               onPress: () => {
                 try {
                   // Check if we can go back (editing flow) or need to navigate to tab
@@ -1122,7 +1284,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
               }
             },
             {
-              text: 'Add to Calendar',
+              text: t('Add to Calendar'),
               onPress: async () => {
                 try {
                   const booking = {
@@ -1130,7 +1292,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                     startDate: bookingData.startDate,
                     endDate: bookingData.endDate,
                     status: 'confirmed',
-                    notes: `${asset?.name || 'Asset'} booking`
+                    notes: `${asset?.name || t('Asset')} ${t('booking')}`
                   };
                   
                   await showCalendarSelection(booking, asset);
@@ -1162,14 +1324,14 @@ const CreateBookingScreen = ({ route, navigation }) => {
         );
         
       } else {
-        const errorMessage = result?.error || 'Failed to create booking. Please try again.';
-        Alert.alert('Error', errorMessage);
+        const errorMessage = result?.error || t('Failed to create booking. Please try again.');
+        Alert.alert(t('Error'), mapApiError(errorMessage));
       }
       
     } catch (error) {
       setIsLoading(false);
       console.error('Error creating booking:', error);
-      Alert.alert('Error', 'Failed to create booking. Please try again.');
+      Alert.alert(t('Error'), t('Failed to create booking. Please try again.'));
     }
   };
   
@@ -1184,67 +1346,58 @@ const CreateBookingScreen = ({ route, navigation }) => {
     ) + 1;  // Add 1 to include both start and end dates
     const nightsCount = Math.max(0, daysCount - 1);
     
-    return `${nightsCount} nights, ${daysCount} days`;
+    return `${nightsCount} ${t('nights')}, ${daysCount} ${t('days')}`;
   };
   
   const loadCurrentUserBookings = async () => {
     try {
       console.log('📚 Loading current user bookings...');
-      // Fetch current user's bookings from API
-      const result = await bookingApi.getUserBookings();
-      console.log('📚 User bookings API result:', result);
-      
-      if (result.success) {
-        console.log('✅ User bookings loaded successfully:', result.data.length, 'bookings');
-        setCurrentUserBookings(result.data);
+      const bookings = await fetchUserBookings();
+      console.log('✅ User bookings loaded successfully:', bookings.length, 'bookings');
+      setCurrentUserBookings(bookings);
         
-        // Generate date arrays for all user's CONFIRMED bookings for this asset
-        const userBookingDates = [];
-        result.data.forEach(booking => {
-          // Only include CONFIRMED bookings for the current asset (exclude cancelled bookings)
-          if (booking.asset && booking.asset._id === asset?._id && booking.status === 'confirmed') {
-            console.log('📅 Including confirmed booking:', {
-              id: booking._id,
-              startDate: booking.startDate,
-              endDate: booking.endDate,
-              status: booking.status
-            });
-            
-            // Parse dates using DateUtils for consistent handling
-            const startDate = DateUtils.parseDate(booking.startDate);
-            const endDate = DateUtils.parseDate(booking.endDate);
-            
-            const currentDate = new Date(startDate);
-            
-            console.log('📅 Parsed dates for calendar:', {
-              startDate: startDate.toDateString(),
-              endDate: endDate.toDateString(),
-              originalStart: booking.startDate,
-              originalEnd: booking.endDate
-            });
-            
-            while (currentDate <= endDate) {
-              userBookingDates.push(new Date(currentDate));
-              currentDate.setDate(currentDate.getDate() + 1);
-            }
-          } else if (booking.asset && booking.asset._id === asset?._id) {
-            console.log('📅 Excluding booking (not confirmed):', {
-              id: booking._id,
-              status: booking.status,
-              startDate: booking.startDate,
-              endDate: booking.endDate
-            });
+      // Generate date arrays for all user's CONFIRMED bookings for this asset
+      const userBookingDates = [];
+      bookings.forEach(booking => {
+        // Only include CONFIRMED bookings for the current asset (exclude cancelled bookings)
+        if (booking.asset && booking.asset._id === asset?._id && booking.status === 'confirmed') {
+          console.log('📅 Including confirmed booking:', {
+            id: booking._id,
+            startDate: booking.startDate,
+            endDate: booking.endDate,
+            status: booking.status
+          });
+          
+          // Parse dates using DateUtils for consistent handling
+          const startDate = DateUtils.parseDate(booking.startDate);
+          const endDate = DateUtils.parseDate(booking.endDate);
+          
+          const currentDate = new Date(startDate);
+          
+          console.log('📅 Parsed dates for calendar:', {
+            startDate: startDate.toDateString(),
+            endDate: endDate.toDateString(),
+            originalStart: booking.startDate,
+            originalEnd: booking.endDate
+          });
+          
+          while (currentDate <= endDate) {
+            userBookingDates.push(new Date(currentDate));
+            currentDate.setDate(currentDate.getDate() + 1);
           }
-        });
-        
-        console.log('📅 Generated user booking dates for asset (confirmed only):', userBookingDates.length, 'dates');
-        console.log('📅 User booking dates list:', userBookingDates.map(d => d.toDateString()));
-        setCurrentUserBookingDates(userBookingDates);
-      } else {
-        console.error('❌ Error loading current user bookings:', result.error);
-        setCurrentUserBookings([]);
-        setCurrentUserBookingDates([]);
-      }
+        } else if (booking.asset && booking.asset._id === asset?._id) {
+          console.log('📅 Excluding booking (not confirmed):', {
+            id: booking._id,
+            status: booking.status,
+            startDate: booking.startDate,
+            endDate: booking.endDate
+          });
+        }
+      });
+      
+      console.log('📅 Generated user booking dates for asset (confirmed only):', userBookingDates.length, 'dates');
+      console.log('📅 User booking dates list:', userBookingDates.map(d => d.toDateString()));
+      setCurrentUserBookingDates(userBookingDates);
     } catch (error) {
       console.error('❌ Error loading current user bookings:', error.message);
       setCurrentUserBookings([]);
@@ -1348,16 +1501,14 @@ const CreateBookingScreen = ({ route, navigation }) => {
   const loadUserBookingsThisYear = async () => {
     try {
       console.log('📅 Loading user bookings for this year...');
-      const result = await bookingApi.getUserBookings();
-      if (result.success) {
-        const currentYear = new Date().getFullYear();
-        // Only include CONFIRMED bookings for allocation calculation
-        const thisYearConfirmedBookings = result.data.filter(booking => 
-          new Date(booking.startDate).getFullYear() === currentYear && booking.status === 'confirmed'
-        );
-        console.log('📅 This year confirmed bookings for allocation:', thisYearConfirmedBookings.length, 'out of', result.data.length, 'total');
-        setUserBookingsThisYear(thisYearConfirmedBookings);
-      }
+      const bookings = await fetchUserBookings();
+      const currentYear = new Date().getFullYear();
+      // Only include CONFIRMED bookings for allocation calculation
+      const thisYearConfirmedBookings = bookings.filter(booking => 
+        new Date(booking.startDate).getFullYear() === currentYear && booking.status === 'confirmed'
+      );
+      console.log('📅 This year confirmed bookings for allocation:', thisYearConfirmedBookings.length, 'out of', bookings.length, 'total');
+      setUserBookingsThisYear(thisYearConfirmedBookings);
     } catch (error) {
       console.error('Error loading user bookings for this year:', error);
     }
@@ -1377,7 +1528,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                 >
                   <MaterialIcons name="arrow-back" size={24} color="#000" />
                 </TouchableOpacity>
-          <Text style={styles.headerTitle}>Book My Stay</Text>
+          <Text style={styles.headerTitle}>{t('Book My Stay')}</Text>
           <TouchableOpacity style={styles.helpButton}>
             <MaterialIcons name="help" size={24} color="#000" />
           </TouchableOpacity>
@@ -1386,7 +1537,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
         {/* Asset Selector */}
         <TouchableOpacity style={styles.assetSelector} onPress={toggleAssetDropdown}>
           <Text style={styles.assetSelectorText}>
-                  {asset && asset.name ? asset.name : 'Select an Asset'}
+                  {asset && asset.name ? asset.name : t('Select an Asset')}
           </Text>
           <MaterialIcons name="keyboard-arrow-down" size={24} color="#000" />
         </TouchableOpacity>
@@ -1404,7 +1555,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
             onPress={() => setShowAssetDropdown(false)}
           >
             <View style={styles.dropdownContainer}>
-              <Text style={styles.dropdownTitle}>Select an Asset</Text>
+              <Text style={styles.dropdownTitle}>{t('Select an Asset')}</Text>
               <FlatList
                 data={availableAssets}
                 renderItem={renderAssetItem}
@@ -1421,7 +1572,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
             <MaterialIcons name="chevron-left" size={36} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.currentMonth}>
-            {format(currentMonth, 'MMMM yyyy')}
+            {formatDate(currentMonth, 'MMMM yyyy')}
           </Text>
           <TouchableOpacity onPress={handleNextMonth} style={styles.navButton}>
             <MaterialIcons name="chevron-right" size={36} color="#fff" />
@@ -1462,7 +1613,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                   );
                 } catch (calendarError) {
                   console.error('💥 CRASH in calendar render:', calendarError);
-                  return <View style={styles.calendarContainer}><Text>Calendar Error</Text></View>;
+                  return <View style={styles.calendarContainer}><Text>{t('Calendar Error')}</Text></View>;
                 }
               })()}
               
@@ -1474,7 +1625,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                       const bookingTypeSection = bookingTypeInfo ? (
                         <>
                           <View style={styles.bookingTypeHeader}>
-                            <Text style={styles.bookingTypeTitle}>{bookingTypeInfo.title || 'Booking'}</Text>
+                            <Text style={styles.bookingTypeTitle}>{bookingTypeInfo.title || t('Booking')}</Text>
                             {bookingTypeInfo.badge && (
                               <View style={[styles.bookingTypeBadge, { backgroundColor: bookingTypeInfo.badgeColor || '#45B7D1' }]}>
                                 <Text style={styles.bookingTypeBadgeText}>{bookingTypeInfo.badge}</Text>
@@ -1490,12 +1641,12 @@ const CreateBookingScreen = ({ route, navigation }) => {
                       
                       const allocationSection = validationResults?.allocationInfo ? (
                         <View style={styles.allocationInfo}>
-                          <Text style={styles.allocationTitle}>Booking Details</Text>
+                          <Text style={styles.allocationTitle}>{t('Booking Details')}</Text>
                           
                           {/* Booking Length */}
                           <View style={styles.allocationRow}>
-                            <Text style={styles.allocationLabel}>Booking length:</Text>
-                            <Text style={styles.allocationValue}>{validationResults.allocationInfo.bookingLength || 0} days</Text>
+                            <Text style={styles.allocationLabel}>{t('Booking length:')}</Text>
+                            <Text style={styles.allocationValue}>{validationResults.allocationInfo.bookingLength || 0} {t('days')}</Text>
                           </View>
                           
                           {/* Allocation Usage based on Booking Type */}
@@ -1514,7 +1665,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                               return (
                                 <>
                                   <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Special date booking:</Text>
+                                    <Text style={styles.allocationLabel}>{t('Special date booking:')}</Text>
                                     <Text style={[styles.allocationValue, {color: '#9B59B6'}]}>
                                       {specialDateInfo.types.map(type => 
                                         type.replace('type1', 'Type 1').replace('type2', 'Type 2')
@@ -1528,9 +1679,9 @@ const CreateBookingScreen = ({ route, navigation }) => {
                               return (
                                 <>
                                   <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Last minute booking:</Text>
+                                    <Text style={styles.allocationLabel}>{t('Last minute booking:')}</Text>
                                     <Text style={[styles.allocationValue, {color: extraCost ? '#FF6B6B' : '#27AE60'}]}>
-                                      {extraCost ? 'Extra cost applies' : 'No extra cost'}
+                                      {extraCost ? t('Extra cost applies') : t('No extra cost')}
                                     </Text>
                                   </View>
                                 </>
@@ -1539,8 +1690,8 @@ const CreateBookingScreen = ({ route, navigation }) => {
                               return (
                                 <>
                                   <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Short term booking:</Text>
-                                    <Text style={[styles.allocationValue, {color: '#4ECDC4'}]}>Flexible rules</Text>
+                                    <Text style={styles.allocationLabel}>{t('Short term booking:')}</Text>
+                                    <Text style={[styles.allocationValue, {color: '#4ECDC4'}]}>{t('Flexible rules')}</Text>
                                   </View>
                                 
                                 </>
@@ -1549,8 +1700,8 @@ const CreateBookingScreen = ({ route, navigation }) => {
                               return (
                                 <>
                                   <View style={styles.allocationRow}>
-                                    <Text style={styles.allocationLabel}>Long term booking:</Text>
-                                    <Text style={[styles.allocationValue, {color: '#45B7D1'}]}>Standard rules</Text>
+                                    <Text style={styles.allocationLabel}>{t('Long term booking:')}</Text>
+                                    <Text style={[styles.allocationValue, {color: '#45B7D1'}]}>{t('Standard rules')}</Text>
                                   </View>
                                 
                                 </>
@@ -1564,9 +1715,9 @@ const CreateBookingScreen = ({ route, navigation }) => {
                       
                       const errorsSection = (validationResults?.errors && Array.isArray(validationResults.errors) && validationResults.errors.length > 0) ? (
                         <View style={styles.errorsContainer}>
-                          <Text style={styles.errorTitle}>❌ Booking Not Available</Text>
+                          <Text style={styles.errorTitle}>{t('❌ Booking Not Available')}</Text>
                           {validationResults.errors.map((error, index) => (
-                            <Text key={`error-${index}`} style={styles.errorText}>• {String(error || 'Unknown error')}</Text>
+                            <Text key={`error-${index}`} style={styles.errorText}>• {String(error || t('Unknown error'))}</Text>
                           ))}
                         </View>
                       ) : null;
@@ -1586,7 +1737,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                       return (
                         <View style={styles.validationSummary}>
                           <View style={styles.validationContent}>
-                            <Text>Validation summary error</Text>
+                            <Text>{t('Validation summary error')}</Text>
                           </View>
                         </View>
                       );
@@ -1597,7 +1748,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                   }
                 } catch (validationError) {
                   console.error('💥 CRASH in validation summary render:', validationError);
-                  return <View><Text>Validation Error</Text></View>;
+                  return <View><Text>{t('Validation Error')}</Text></View>;
                 }
               })()}
         
@@ -1616,9 +1767,10 @@ const CreateBookingScreen = ({ route, navigation }) => {
                                 setEndDate(null);
                                 setSelectedDates([]);
                                 setValidationResults(null);
+                                setAlertHighlightRange(null);
                               }}
                             >
-                              <Text style={styles.clearButtonText}>Clear Selection</Text>
+                              <Text style={styles.clearButtonText}>{t('Clear Selection')}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity 
                               style={[styles.bookButton, styles.bookButtonDisabled, styles.flexButton]}
@@ -1641,9 +1793,10 @@ const CreateBookingScreen = ({ route, navigation }) => {
                                 setEndDate(null);
                                 setSelectedDates([]);
                                 setValidationResults(null);
+                                setAlertHighlightRange(null);
                               }}
                             >
-                              <Text style={styles.clearButtonText}>Clear Selection</Text>
+                              <Text style={styles.clearButtonText}>{t('Clear Selection')}</Text>
                             </TouchableOpacity>
                             <TouchableOpacity 
                               style={[styles.bookButton, styles.flexButton]}
@@ -1651,7 +1804,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                               disabled={isLoading}
                             >
                               <Text style={styles.bookButtonText}>
-                                {isLoading ? 'Processing...' : 'Continue To Book'}
+                                {isLoading ? t('Processing...') : t('Continue To Book')}
                               </Text>
                               <Text style={styles.bookButtonSubtext}>
                                 {getBookingSummary()}
@@ -1666,7 +1819,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
                   }
                 } catch (buttonError) {
                   console.error('💥 CRASH in book button render:', buttonError);
-                  return <View><Text>Button Error</Text></View>;
+                  return <View><Text>{t('Button Error')}</Text></View>;
                 }
               })()}
             </View>
@@ -1676,7 +1829,7 @@ const CreateBookingScreen = ({ route, navigation }) => {
           console.error('💥 Error stack:', renderError.stack);
           return (
             <View style={styles.container}>
-              <Text>App Error - Please restart</Text>
+              <Text>{t('App Error - Please restart')}</Text>
             </View>
           );
         }
@@ -1836,9 +1989,21 @@ const styles = StyleSheet.create({
     margin: 0,
     borderRadius: 0,
   },
+  alertHighlightedDay: {
+    backgroundColor: '#dff4ef',
+    margin: 0,
+    borderRadius: 0,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#9fd2c8',
+  },
   selectedDayText: {
     color: '#fff',
     fontWeight: 'bold'
+  },
+  alertHighlightedDayText: {
+    color: '#1E4640',
+    fontWeight: '700'
   },
   unavailableDay: {
     position: 'relative'
@@ -1898,6 +2063,17 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
   },
   middleDay: {
+    margin: 0,
+  },
+  alertHighlightStartDay: {
+    borderLeftWidth: 1,
+    borderLeftColor: '#9fd2c8',
+  },
+  alertHighlightEndDay: {
+    borderRightWidth: 1,
+    borderRightColor: '#9fd2c8',
+  },
+  alertHighlightMiddleDay: {
     margin: 0,
   },
   // Dropdown styles

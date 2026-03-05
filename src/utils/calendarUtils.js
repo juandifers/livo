@@ -1,6 +1,6 @@
 import * as Calendar from 'expo-calendar';
 import { Platform, Alert } from 'react-native';
-import { format } from 'date-fns';
+import { translateGlobal as t } from '../i18n';
 
 /**
  * Calendar utility functions for managing booking events
@@ -15,16 +15,16 @@ export const requestCalendarPermissions = async () => {
     
     if (status !== 'granted') {
       Alert.alert(
-        'Calendar Permission Required',
-        'Please enable calendar access in your device settings to add booking events to your calendar.',
+        t('Calendar Permission Required'),
+        t('Please enable calendar access in your device settings to add booking events to your calendar.'),
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => {
+          { text: t('Cancel'), style: 'cancel' },
+          { text: t('Open Settings'), onPress: () => {
             if (Platform.OS === 'ios') {
               // On iOS, we can't directly open settings, but we can guide the user
               Alert.alert(
-                'Enable Calendar Access',
-                'Go to Settings > Privacy & Security > Calendars > Livo and enable access.'
+                t('Enable Calendar Access'),
+                t('Go to Settings > Privacy & Security > Calendars > Livo and enable access.')
               );
             }
           }}
@@ -36,7 +36,7 @@ export const requestCalendarPermissions = async () => {
     return true;
   } catch (error) {
     console.error('Error requesting calendar permissions:', error);
-    Alert.alert('Error', 'Unable to request calendar permissions');
+    Alert.alert(t('Error'), t('Unable to request calendar permissions'));
     return false;
   }
 };
@@ -102,7 +102,7 @@ export const createBookingEvent = async (booking, asset) => {
     // Get the default calendar
     const calendar = await getDefaultCalendar();
     if (!calendar) {
-      Alert.alert('Error', 'No suitable calendar found to add the event');
+      Alert.alert(t('Error'), t('No suitable calendar found to add the event'));
       return null;
     }
 
@@ -140,9 +140,9 @@ export const createBookingEvent = async (booking, asset) => {
     
     if (eventId) {
       Alert.alert(
-        'Event Added',
-        `Your booking has been added to your ${calendar.title} calendar with reminders.`,
-        [{ text: 'OK' }]
+        t('Event Added'),
+        t('Your booking has been added to your {{calendar}} calendar with reminders.', { calendar: calendar.title }),
+        [{ text: t('OK') }]
       );
       return eventId;
     }
@@ -151,8 +151,8 @@ export const createBookingEvent = async (booking, asset) => {
   } catch (error) {
     console.error('Error creating calendar event:', error);
     Alert.alert(
-      'Error Adding Event',
-      'There was an error adding your booking to the calendar. Please try again.'
+      t('Error Adding Event'),
+      t('There was an error adding your booking to the calendar. Please try again.')
     );
     return null;
   }
@@ -169,7 +169,7 @@ export const showCalendarSelection = async (booking, asset) => {
     const calendars = await getAvailableCalendars();
     
     if (calendars.length === 0) {
-      Alert.alert('Error', 'No writable calendars found on your device');
+      Alert.alert(t('Error'), t('No writable calendars found on your device'));
       return;
     }
     
@@ -215,29 +215,29 @@ export const showCalendarSelection = async (booking, asset) => {
           
           if (eventId) {
             Alert.alert(
-              'Event Added',
-              `Your booking has been added to your ${cal.title} calendar.`
+              t('Event Added'),
+              t('Your booking has been added to your {{calendar}} calendar.', { calendar: cal.title })
             );
           }
         } catch (error) {
           console.error('Error creating event in selected calendar:', error);
-          Alert.alert('Error', 'Failed to add event to selected calendar');
+          Alert.alert(t('Error'), t('Failed to add event to selected calendar'));
         }
       }
     }));
     
     Alert.alert(
-      'Select Calendar',
-      'Choose which calendar to add your booking to:',
+      t('Select Calendar'),
+      t('Choose which calendar to add your booking to:'),
       [
         ...calendarOptions,
-        { text: 'Cancel', style: 'cancel' }
+        { text: t('Cancel'), style: 'cancel' }
       ]
     );
     
   } catch (error) {
     console.error('Error showing calendar selection:', error);
-    Alert.alert('Error', 'Unable to access calendars');
+    Alert.alert(t('Error'), t('Unable to access calendars'));
   }
 };
 

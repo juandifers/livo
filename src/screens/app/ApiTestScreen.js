@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -18,8 +18,10 @@ import {
 } from '../../utils/apiTester';
 import { TEST_CREDENTIALS } from '../../config';
 import { showCalendarSelection, requestCalendarPermissions } from '../../utils/calendarUtils';
+import { useI18n } from '../../i18n';
 
 const ApiTestScreen = ({ navigation }) => {
+  const { t, formatDateByOptions } = useI18n();
   const [logs, setLogs] = useState([]);
   const [logCounter, setLogCounter] = useState(0);
   const [email, setEmail] = useState(TEST_CREDENTIALS.email);
@@ -29,7 +31,11 @@ const ApiTestScreen = ({ navigation }) => {
   // Function to add log entries
   const addLog = (message, type = 'info') => {
     setLogCounter(prev => prev + 1);
-    const timestamp = new Date().toLocaleTimeString();
+    const timestamp = formatDateByOptions(new Date(), {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
     setLogs(prevLogs => [
       { id: `${Date.now()}-${logCounter}`, message, timestamp, type },
       ...prevLogs
@@ -44,7 +50,7 @@ const ApiTestScreen = ({ navigation }) => {
   // Run configuration log
   const runConfigTest = () => {
     clearLogs();
-    addLog('Testing API Configuration...', 'info');
+    addLog(t('Testing API Configuration...'), 'info');
     
     try {
       logApiConfig();
@@ -57,7 +63,7 @@ const ApiTestScreen = ({ navigation }) => {
       addLog(`API URL: ${apiConfig.baseURL}`, 'success');
       addLog(`Timeout: ${apiConfig.timeout}ms`, 'info');
       
-      addLog('Configuration test completed', 'success');
+      addLog(t('Configuration test completed'), 'success');
     } catch (error) {
       addLog(`Error: ${error.message}`, 'error');
     }
@@ -66,16 +72,16 @@ const ApiTestScreen = ({ navigation }) => {
   // Run authentication test
   const runAuthTest = async () => {
     setIsLoading(true);
-    addLog('Testing authentication...', 'info');
+    addLog(t('Testing authentication...'), 'info');
     
     try {
       const result = await testAuthentication(email, password);
       
       if (result.success) {
-        addLog('Authentication successful', 'success');
+        addLog(t('Authentication successful'), 'success');
         addLog(`User: ${result.data.user.name}`, 'info');
       } else {
-        addLog(`Authentication failed: ${result.error}`, 'error');
+        addLog(t('Authentication failed: {{error}}', { error: result.error }), 'error');
       }
     } catch (error) {
       addLog(`Error: ${error.message}`, 'error');
@@ -87,7 +93,7 @@ const ApiTestScreen = ({ navigation }) => {
   // Test assets API
   const runAssetsTest = async () => {
     setIsLoading(true);
-    addLog('Testing assets API...', 'info');
+    addLog(t('Testing assets API...'), 'info');
     
     try {
       const result = await testGetAssets();
@@ -100,7 +106,7 @@ const ApiTestScreen = ({ navigation }) => {
           addLog(`First asset: ${firstAsset.name} (${firstAsset._id})`, 'info');
         }
       } else {
-        addLog(`Assets fetch failed: ${result.error}`, 'error');
+        addLog(t('Assets fetch failed: {{error}}', { error: result.error }), 'error');
       }
     } catch (error) {
       addLog(`Error: ${error.message}`, 'error');
@@ -112,7 +118,7 @@ const ApiTestScreen = ({ navigation }) => {
   // Test bookings API
   const runBookingsTest = async () => {
     setIsLoading(true);
-    addLog('Testing bookings API...', 'info');
+    addLog(t('Testing bookings API...'), 'info');
     
     try {
       const result = await testGetUserBookings();
@@ -126,7 +132,7 @@ const ApiTestScreen = ({ navigation }) => {
           addLog(`Asset: ${firstBooking.asset.name}`, 'info');
         }
       } else {
-        addLog(`Bookings fetch failed: ${result.error}`, 'error');
+        addLog(t('Bookings fetch failed: {{error}}', { error: result.error }), 'error');
       }
     } catch (error) {
       addLog(`Error: ${error.message}`, 'error');
@@ -140,30 +146,30 @@ const ApiTestScreen = ({ navigation }) => {
     clearLogs();
     setIsLoading(true);
     
-    addLog('Running all tests...', 'info');
+    addLog(t('Running all tests...'), 'info');
     
     // Configuration test
     runConfigTest();
     
     // Authentication test
-    addLog('Starting authentication test', 'info');
+    addLog(t('Starting authentication test'), 'info');
     try {
       const authResult = await testAuthentication(email, password);
       
       if (authResult.success) {
-        addLog('Authentication successful', 'success');
+        addLog(t('Authentication successful'), 'success');
         
         // Only run other tests if authentication succeeds
-        addLog('Starting assets test', 'info');
+        addLog(t('Starting assets test'), 'info');
         await runAssetsTest();
         
-        addLog('Starting bookings test', 'info');
+        addLog(t('Starting bookings test'), 'info');
         await runBookingsTest();
         
-        addLog('All tests completed', 'success');
+        addLog(t('All tests completed'), 'success');
       } else {
-        addLog(`Authentication failed: ${authResult.error}`, 'error');
-        addLog('Stopping tests', 'info');
+        addLog(t('Authentication failed: {{error}}', { error: authResult.error }), 'error');
+        addLog(t('Stopping tests'), 'info');
       }
     } catch (error) {
       addLog(`Error: ${error.message}`, 'error');
@@ -181,26 +187,29 @@ const ApiTestScreen = ({ navigation }) => {
       startDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
       endDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),  // 10 days from now
       status: 'confirmed',
-      notes: 'Test booking from Livo app'
+      notes: t('Test booking from Livo app')
     };
     
     const testAsset = {
-      name: 'Serenity Dreams',
-      location: 'Marina del Rey, California',
+      name: t('Serenity Dreams'),
+      location: t('Marina del Rey, California'),
       type: 'boat'
     };
     
     try {
-      console.log(`[${logCounter + 1}] Testing calendar integration...`);
-      addLog(`[${logCounter + 1}] Testing calendar integration...`, 'info');
+      console.log(`[${logCounter + 1}] ${t('Testing calendar integration...')}`);
+      addLog(`[${logCounter + 1}] ${t('Testing calendar integration...')}`, 'info');
       
       await showCalendarSelection(testBooking, testAsset);
       
-      console.log(`[${logCounter + 1}] Calendar test completed`);
-      addLog(`[${logCounter + 1}] Calendar test completed`, 'success');
+      console.log(`[${logCounter + 1}] ${t('Calendar test completed')}`);
+      addLog(`[${logCounter + 1}] ${t('Calendar test completed')}`, 'success');
     } catch (error) {
       console.error(`[${logCounter + 1}] Calendar test error:`, error);
-      addLog(`[${logCounter + 1}] Calendar test error: ${error.message}`, 'error');
+      addLog(
+        `[${logCounter + 1}] ${t('Calendar test error: {{error}}', { error: error.message })}`,
+        'error'
+      );
     }
   };
 
@@ -208,16 +217,22 @@ const ApiTestScreen = ({ navigation }) => {
     setLogCounter(prev => prev + 1);
     
     try {
-      console.log(`[${logCounter + 1}] Testing calendar permissions...`);
-      addLog(`[${logCounter + 1}] Testing calendar permissions...`, 'info');
+      console.log(`[${logCounter + 1}] ${t('Testing calendar permissions...')}`);
+      addLog(`[${logCounter + 1}] ${t('Testing calendar permissions...')}`, 'info');
       
       const hasPermission = await requestCalendarPermissions();
       
-      console.log(`[${logCounter + 1}] Calendar permission granted: ${hasPermission}`);
-      addLog(`[${logCounter + 1}] Calendar permission granted: ${hasPermission}`, 'success');
+      console.log(`[${logCounter + 1}] ${t('Calendar permission granted: {{value}}', { value: hasPermission })}`);
+      addLog(
+        `[${logCounter + 1}] ${t('Calendar permission granted: {{value}}', { value: hasPermission })}`,
+        'success'
+      );
     } catch (error) {
       console.error(`[${logCounter + 1}] Permission test error:`, error);
-      addLog(`[${logCounter + 1}] Permission test error: ${error.message}`, 'error');
+      addLog(
+        `[${logCounter + 1}] ${t('Permission test error: {{error}}', { error: error.message })}`,
+        'error'
+      );
     }
   };
 
@@ -253,17 +268,17 @@ const ApiTestScreen = ({ navigation }) => {
           >
             <MaterialIcons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>API Test Console</Text>
+          <Text style={styles.headerTitle}>{t('API Test Console')}</Text>
           <View style={styles.placeholder} />
         </View>
 
         <View style={styles.credentialsContainer}>
-          <Text style={styles.sectionTitle}>Test Credentials</Text>
+          <Text style={styles.sectionTitle}>{t('Test Credentials')}</Text>
           <TextInput
             style={styles.input}
             value={email}
             onChangeText={setEmail}
-            placeholder="Email"
+            placeholder={t('Email')}
             keyboardType="email-address"
             autoCapitalize="none"
           />
@@ -271,7 +286,7 @@ const ApiTestScreen = ({ navigation }) => {
             style={styles.input}
             value={password}
             onChangeText={setPassword}
-            placeholder="Password"
+            placeholder={t('Password')}
             secureTextEntry
           />
         </View>
@@ -283,7 +298,7 @@ const ApiTestScreen = ({ navigation }) => {
               onPress={runConfigTest}
               disabled={isLoading}
             >
-              <Text style={styles.actionButtonText}>Test Config</Text>
+              <Text style={styles.actionButtonText}>{t('Test Config')}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -291,7 +306,7 @@ const ApiTestScreen = ({ navigation }) => {
               onPress={runAuthTest}
               disabled={isLoading}
             >
-              <Text style={styles.actionButtonText}>Test Auth</Text>
+              <Text style={styles.actionButtonText}>{t('Test Auth')}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -299,7 +314,7 @@ const ApiTestScreen = ({ navigation }) => {
               onPress={runAssetsTest}
               disabled={isLoading}
             >
-              <Text style={styles.actionButtonText}>Test Assets</Text>
+              <Text style={styles.actionButtonText}>{t('Test Assets')}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -307,7 +322,7 @@ const ApiTestScreen = ({ navigation }) => {
               onPress={runBookingsTest}
               disabled={isLoading}
             >
-              <Text style={styles.actionButtonText}>Test Bookings</Text>
+              <Text style={styles.actionButtonText}>{t('Test Bookings')}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -315,22 +330,22 @@ const ApiTestScreen = ({ navigation }) => {
               onPress={runAllTests}
               disabled={isLoading}
             >
-              <Text style={styles.actionButtonText}>Run All Tests</Text>
+              <Text style={styles.actionButtonText}>{t('Run All Tests')}</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
 
         <View style={styles.logsContainer}>
           <View style={styles.logsHeader}>
-            <Text style={styles.sectionTitle}>Logs</Text>
+            <Text style={styles.sectionTitle}>{t('Logs')}</Text>
             <TouchableOpacity onPress={clearLogs}>
-              <Text style={styles.clearText}>Clear</Text>
+              <Text style={styles.clearText}>{t('Clear')}</Text>
             </TouchableOpacity>
           </View>
           
           <ScrollView style={styles.logsList}>
             {logs.length === 0 ? (
-              <Text style={styles.emptyLogs}>No logs yet. Run a test to see results here.</Text>
+              <Text style={styles.emptyLogs}>{t('No logs yet. Run a test to see results here.')}</Text>
             ) : (
               logs.map(log => <LogEntry key={log.id} log={log} />)
             )}
@@ -338,14 +353,14 @@ const ApiTestScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.calendarContainer}>
-          <Text style={styles.sectionTitle}>Calendar Integration</Text>
+          <Text style={styles.sectionTitle}>{t('Calendar Integration')}</Text>
           
           <TouchableOpacity style={[styles.button, styles.warningButton]} onPress={testCalendarPermissions}>
-            <Text style={styles.buttonText}>Test Calendar Permissions</Text>
+            <Text style={styles.buttonText}>{t('Test Calendar Permissions')}</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={[styles.button, styles.successButton]} onPress={testCalendar}>
-            <Text style={styles.buttonText}>Test Add to Calendar</Text>
+            <Text style={styles.buttonText}>{t('Test Add to Calendar')}</Text>
           </TouchableOpacity>
         </View>
       </View>

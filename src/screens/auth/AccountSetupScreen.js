@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -12,25 +12,30 @@ import { TextInput, Button } from 'react-native-paper';
 import { Formik } from 'formik';
 import * as Yup from 'yup';
 import { authApi } from '../../api';
-
-const validationSchema = Yup.object().shape({
-  password: Yup.string()
-    .required('Password is required')
-    .min(6, 'Password must be at least 6 characters'),
-  confirmPassword: Yup.string()
-    .required('Confirm password is required')
-    .oneOf([Yup.ref('password')], 'Passwords must match'),
-});
+import { useI18n } from '../../i18n';
 
 const AccountSetupScreen = ({ route, navigation }) => {
   const { token } = route.params || {};
+  const { t, mapApiError } = useI18n();
   const [isLoading, setIsLoading] = useState(false);
   const [secureTextEntry, setSecureTextEntry] = useState(true);
   const [secureConfirmTextEntry, setSecureConfirmTextEntry] = useState(true);
+  const validationSchema = useMemo(
+    () =>
+      Yup.object().shape({
+        password: Yup.string()
+          .required(t('Password is required'))
+          .min(6, t('Password must be at least 6 characters')),
+        confirmPassword: Yup.string()
+          .required(t('Confirm password is required'))
+          .oneOf([Yup.ref('password')], t('Passwords must match')),
+      }),
+    [t]
+  );
 
   const handleSetup = async (values) => {
     if (!token) {
-      Alert.alert('Error', 'Setup token is missing');
+      Alert.alert(t('Error'), t('Setup token is missing'));
       return;
     }
 
@@ -44,12 +49,15 @@ const AccountSetupScreen = ({ route, navigation }) => {
     
     if (result.success) {
       Alert.alert(
-        'Account Setup Complete',
-        'Your account has been successfully set up. You can now log in.',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        t('Account Setup Complete'),
+        t('Your account has been successfully set up. You can now log in.'),
+        [{ text: t('OK'), onPress: () => navigation.navigate('Login') }]
       );
     } else {
-      Alert.alert('Error', result.error || 'Failed to complete account setup');
+      Alert.alert(
+        t('Error'),
+        mapApiError(result.error || 'Failed to complete account setup', 'Failed to complete account setup')
+      );
     }
   };
 
@@ -60,9 +68,9 @@ const AccountSetupScreen = ({ route, navigation }) => {
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.headerContainer}>
-          <Text style={styles.headerText}>Complete Your Account Setup</Text>
+          <Text style={styles.headerText}>{t('Complete Your Account Setup')}</Text>
           <Text style={styles.subHeaderText}>
-            Please set a password to activate your account.
+            {t('Please set a password to activate your account.')}
           </Text>
         </View>
         
@@ -74,7 +82,7 @@ const AccountSetupScreen = ({ route, navigation }) => {
           {({ handleChange, handleBlur, handleSubmit, values, errors, touched }) => (
             <View style={styles.formContainer}>
               <TextInput
-                label="Password"
+                label={t('Password')}
                 value={values.password}
                 onChangeText={handleChange('password')}
                 onBlur={handleBlur('password')}
@@ -93,7 +101,7 @@ const AccountSetupScreen = ({ route, navigation }) => {
               )}
               
               <TextInput
-                label="Confirm Password"
+                label={t('Confirm Password')}
                 value={values.confirmPassword}
                 onChangeText={handleChange('confirmPassword')}
                 onBlur={handleBlur('confirmPassword')}
@@ -118,7 +126,7 @@ const AccountSetupScreen = ({ route, navigation }) => {
                 loading={isLoading}
                 disabled={isLoading}
               >
-                Complete Setup
+                {t('Complete Setup')}
               </Button>
             </View>
           )}

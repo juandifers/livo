@@ -19,6 +19,7 @@
         "NSCalendarsUsageDescription": "This app needs access to your calendar to add booking events and reminders for your scheduled stays.",
         "NSRemindersUsageDescription": "This app may access reminders to help you manage your booking schedule."
       },
+      "buildNumber": "1",
       "bundleIdentifier": "com.livo.app"
     },
     "android": {
@@ -28,15 +29,10 @@
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "READ_CALENDAR",
-        "WRITE_CALENDAR",
-        "android.permission.READ_CALENDAR",
-        "android.permission.WRITE_CALENDAR",
-        "READ_CALENDAR",
-        "WRITE_CALENDAR",
         "android.permission.READ_CALENDAR",
         "android.permission.WRITE_CALENDAR"
       ],
+      "versionCode": 1,
       "package": "com.livo.app"
     },
     "web": {
@@ -75,7 +71,9 @@
     "sdkVersion": "54.0.0",
     "runtimeVersion": "1.0.0",
     "updates": {
-      "url": "https://u.expo.dev/867d0bfa-4cb8-49d7-8959-2f8a26f3a636"
+      "url": "https://u.expo.dev/867d0bfa-4cb8-49d7-8959-2f8a26f3a636",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     }
   }
 }

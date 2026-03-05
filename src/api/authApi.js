@@ -1,6 +1,47 @@
 import apiClient, { DEV_MODE } from './apiClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { testUser } from '../utils/testData';
+import { getToken, removeToken, setToken } from '../utils/tokenStorage';
+
+const parseApiErrorMessage = (error, fallbackMessage) => {
+  const data = error?.response?.data;
+
+  if (Array.isArray(data?.errors) && data.errors.length > 0) {
+    const first = data.errors[0];
+    if (typeof first?.msg === 'string' && first.msg.trim()) {
+      return first.msg.trim();
+    }
+  }
+
+  if (typeof data?.error === 'string' && data.error.trim()) {
+    const message = data.error.trim();
+    if (/User role 'user' is not authorized/i.test(message)) {
+      return 'Account deletion endpoint is unavailable. Please update backend deployment.';
+    }
+    return message;
+  }
+
+  if (typeof data?.message === 'string' && data.message.trim()) {
+    return data.message.trim();
+  }
+
+  if (typeof data === 'string' && data.trim()) {
+    const compact = data.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (/Cannot DELETE .*\/api\/auth\/me/i.test(compact)) {
+      return 'Account deletion endpoint is unavailable. Please update backend deployment.';
+    }
+    if (/Cannot DELETE .*\/api\/users\/me/i.test(compact)) {
+      return 'Account deletion endpoint is unavailable. Please update backend deployment.';
+    }
+    return compact;
+  }
+
+  if (!error?.response) {
+    return 'Unable to reach server. Please check your connection and try again.';
+  }
+
+  return fallbackMessage;
+};
 
 // Auth API endpoints
 const login = async (email, password) => {
@@ -13,7 +54,7 @@ const login = async (email, password) => {
         const token = 'fake-jwt-token-for-development';
         
         // Store token and user data
-        await AsyncStorage.setItem('token', token);
+        await setToken(token);
         await AsyncStorage.setItem('user', JSON.stringify(testUser));
         
         return { success: true, data: { token, user: testUser } };
@@ -31,7 +72,7 @@ const login = async (email, password) => {
     const { token } = response.data;
     
     // Store the token first
-    await AsyncStorage.setItem('token', token);
+    await setToken(token);
     
     // Now get the user data with the token
     try {
@@ -60,20 +101,64 @@ const logout = async () => {
   try {
     // In development mode, just clear storage
     if (DEV_MODE) {
-      await AsyncStorage.removeItem('token');
+      await removeToken();
       await AsyncStorage.removeItem('user');
       return { success: true };
     }
     
     // In production mode, call the API
     await apiClient.get('/auth/logout');
-    await AsyncStorage.removeItem('token');
+    await removeToken();
     await AsyncStorage.removeItem('user');
     return { success: true };
   } catch (error) {
     return { 
       success: false, 
       error: error.response?.data?.message || 'Logout failed' 
+    };
+  }
+};
+
+const deleteMyAccount = async (currentPassword, confirmationText) => {
+  try {
+    // In development mode, simulate success and clear auth data
+    if (DEV_MODE) {
+      await removeToken();
+      await AsyncStorage.removeItem('user');
+      return { success: true };
+    }
+
+    const payload = { currentPassword, confirmationText };
+
+    try {
+      await apiClient.delete('/auth/me', { data: payload });
+    } catch (primaryError) {
+      const status = primaryError?.response?.status;
+      const raw = primaryError?.response?.data;
+      const rawText = typeof raw === 'string' ? raw : '';
+      const authMeUnavailable =
+        status === 404 ||
+        status === 405 ||
+        /Cannot DELETE .*\/api\/auth\/me/i.test(rawText);
+
+      if (!authMeUnavailable) {
+        return {
+          success: false,
+          error: parseApiErrorMessage(primaryError, 'Failed to delete account')
+        };
+      }
+
+      // Backward compatibility for deployments where self-delete still lives at /users/me.
+      await apiClient.delete('/users/me', { data: payload });
+    }
+
+    await removeToken();
+    await AsyncStorage.removeItem('user');
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: parseApiErrorMessage(error, 'Failed to delete account')
     };
   }
 };
@@ -94,7 +179,7 @@ const completeAccountSetup = async (token, password, confirmPassword) => {
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Account setup failed' 
+      error: error.response?.data?.error || error.response?.data?.message || 'Account setup failed'
     };
   }
 };
@@ -112,7 +197,7 @@ const forgotPassword = async (email) => {
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Password reset request failed' 
+      error: error.response?.data?.error || error.response?.data?.message || 'Password reset request failed'
     };
   }
 };
@@ -133,7 +218,27 @@ const resetPassword = async (token, password, confirmPassword) => {
   } catch (error) {
     return { 
       success: false, 
-      error: error.response?.data?.message || 'Password reset failed' 
+      error: error.response?.data?.error || error.response?.data?.message || 'Password reset failed'
+    };
+  }
+};
+
+const changePassword = async (currentPassword, newPassword, confirmNewPassword) => {
+  try {
+    if (DEV_MODE) {
+      return { success: true, data: { message: 'Password updated successfully' } };
+    }
+
+    await apiClient.put('/auth/change-password', {
+      currentPassword,
+      newPassword,
+      confirmNewPassword
+    });
+    return { success: true, data: { message: 'Password updated successfully' } };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to change password'
     };
   }
 };
@@ -142,7 +247,7 @@ const getCurrentUser = async () => {
   try {
     // In development mode, return test user if token exists
     if (DEV_MODE) {
-      const token = await AsyncStorage.getItem('token');
+      const token = await getToken();
       if (token) {
         return { success: true, data: testUser };
       } else {
@@ -164,8 +269,10 @@ const getCurrentUser = async () => {
 export default {
   login,
   logout,
+  deleteMyAccount,
   completeAccountSetup,
   forgotPassword,
   resetPassword,
+  changePassword,
   getCurrentUser
 }; 

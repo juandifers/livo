@@ -16,10 +16,12 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useI18n } from '../../i18n';
 
 const UserProfileScreen = ({ navigation }) => {
+  const { t } = useI18n();
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState('GENERAL INFO');
+  const [activeTab, setActiveTab] = useState('general');
   const [isEditing, setIsEditing] = useState(false);
   const [showImageOptions, setShowImageOptions] = useState(false);
   
@@ -52,7 +54,7 @@ const UserProfileScreen = ({ navigation }) => {
     if (isEditing) {
       // Save changes
       setOriginalData({...userData});
-      Alert.alert("Success", "Profile updated successfully!");
+      Alert.alert(t('Success'), t('Profile updated successfully!'));
     } else {
       // Enter edit mode
       setOriginalData({...userData});
@@ -96,7 +98,7 @@ const UserProfileScreen = ({ navigation }) => {
 
   const renderInputField = (label, field, value, keyboardType = 'default') => (
     <View style={styles.inputContainer}>
-      <Text style={styles.inputLabel}>{label}</Text>
+      <Text style={styles.inputLabel}>{t(label)}</Text>
       <TextInput
         style={[styles.input, isEditing && styles.editableInput]}
         value={value}
@@ -109,7 +111,7 @@ const UserProfileScreen = ({ navigation }) => {
 
   const renderCommunicationSwitch = (label, field, value) => (
     <View style={styles.switchContainer}>
-      <Text style={styles.switchLabel}>{label}</Text>
+      <Text style={styles.switchLabel}>{t(label)}</Text>
       <Switch
         value={value}
         onValueChange={(newValue) => {
@@ -135,7 +137,7 @@ const UserProfileScreen = ({ navigation }) => {
       {renderInputField('User Name', 'userName', userData.userName)}
       
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Date of Birth</Text>
+        <Text style={styles.inputLabel}>{t('Date of Birth')}</Text>
         <View style={styles.dateInputContainer}>
           <TextInput
             style={[styles.input, isEditing && styles.editableInput]}
@@ -155,7 +157,7 @@ const UserProfileScreen = ({ navigation }) => {
       {renderInputField('Email', 'email', userData.email, 'email-address')}
       
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Phone Number</Text>
+        <Text style={styles.inputLabel}>{t('Phone Number')}</Text>
         <View style={[styles.phoneInputContainer, isEditing && styles.editableInput]}>
           <Image 
             source={{ uri: 'https://flagcdn.com/w20/co.png' }} 
@@ -178,7 +180,7 @@ const UserProfileScreen = ({ navigation }) => {
     <View style={styles.tabContent}>
       {renderInputField('Address line 1', 'addressLine1', userData.addressLine1)}
       {renderInputField('Address line 2', 'addressLine2', userData.addressLine2)}
-      {renderInputField('PostalCode', 'postalCode', userData.postalCode)}
+      {renderInputField('Postal Code', 'postalCode', userData.postalCode)}
       {renderInputField('Country', 'country', userData.country)}
       {renderInputField('State', 'state', userData.state)}
       {renderInputField('City', 'city', userData.city)}
@@ -195,11 +197,11 @@ const UserProfileScreen = ({ navigation }) => {
 
   const renderActiveTabContent = () => {
     switch (activeTab) {
-      case 'GENERAL INFO':
+      case 'general':
         return renderGeneralInfoTab();
-      case 'ADDRESS':
+      case 'address':
         return renderAddressTab();
-      case 'COMMUNICATION':
+      case 'communication':
         return renderCommunicationTab();
       default:
         return renderGeneralInfoTab();
@@ -216,15 +218,15 @@ const UserProfileScreen = ({ navigation }) => {
             onPress={() => {
               if (isEditing) {
                 Alert.alert(
-                  "Discard Changes",
-                  "Are you sure you want to go back? Your changes will be lost.",
+                  t('Discard Changes'),
+                  t('Are you sure you want to go back? Your changes will be lost.'),
                   [
                     {
-                      text: "Cancel",
+                      text: t('Cancel'),
                       style: "cancel"
                     },
                     { 
-                      text: "Discard", 
+                      text: t('Discard'), 
                       onPress: () => navigation.goBack(),
                       style: "destructive"
                     }
@@ -237,13 +239,13 @@ const UserProfileScreen = ({ navigation }) => {
           >
             <MaterialIcons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{user?.name ? `${user.name}` : 'Profile'}</Text>
+          <Text style={styles.headerTitle}>{user?.name ? `${user.name}` : t('Profile')}</Text>
           {isEditing ? (
             <TouchableOpacity 
               style={styles.cancelButton}
               onPress={cancelEditing}
             >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
+              <Text style={styles.cancelButtonText}>{t('Cancel')}</Text>
             </TouchableOpacity>
           ) : (
             <View style={styles.placeholder} />
@@ -268,7 +270,7 @@ const UserProfileScreen = ({ navigation }) => {
             {isEditing && (
               <View style={styles.editImageOverlay}>
                 <MaterialIcons name="camera-alt" size={24} color="#fff" />
-                <Text style={styles.editImageText}>Change</Text>
+                <Text style={styles.editImageText}>{t('Change')}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -278,55 +280,55 @@ const UserProfileScreen = ({ navigation }) => {
           <TouchableOpacity 
             style={[
               styles.tabButton, 
-              activeTab === 'GENERAL INFO' && styles.activeTabButton
+              activeTab === 'general' && styles.activeTabButton
             ]}
-            onPress={() => setActiveTab('GENERAL INFO')}
+            onPress={() => setActiveTab('general')}
           >
             <Text 
               style={[
                 styles.tabText, 
-                activeTab === 'GENERAL INFO' && styles.activeTabText
+                activeTab === 'general' && styles.activeTabText
               ]}
             >
-              GENERAL INFO
+              {t('GENERAL INFO')}
             </Text>
-            {activeTab === 'GENERAL INFO' && <View style={styles.activeTabIndicator} />}
+            {activeTab === 'general' && <View style={styles.activeTabIndicator} />}
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={[
               styles.tabButton, 
-              activeTab === 'ADDRESS' && styles.activeTabButton
+              activeTab === 'address' && styles.activeTabButton
             ]}
-            onPress={() => setActiveTab('ADDRESS')}
+            onPress={() => setActiveTab('address')}
           >
             <Text 
               style={[
                 styles.tabText, 
-                activeTab === 'ADDRESS' && styles.activeTabText
+                activeTab === 'address' && styles.activeTabText
               ]}
             >
-              ADDRESS
+              {t('ADDRESS')}
             </Text>
-            {activeTab === 'ADDRESS' && <View style={styles.activeTabIndicator} />}
+            {activeTab === 'address' && <View style={styles.activeTabIndicator} />}
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={[
               styles.tabButton, 
-              activeTab === 'COMMUNICATION' && styles.activeTabButton
+              activeTab === 'communication' && styles.activeTabButton
             ]}
-            onPress={() => setActiveTab('COMMUNICATION')}
+            onPress={() => setActiveTab('communication')}
           >
             <Text 
               style={[
                 styles.tabText, 
-                activeTab === 'COMMUNICATION' && styles.activeTabText
+                activeTab === 'communication' && styles.activeTabText
               ]}
             >
-              COMMUNICATION
+              {t('COMMUNICATION')}
             </Text>
-            {activeTab === 'COMMUNICATION' && <View style={styles.activeTabIndicator} />}
+            {activeTab === 'communication' && <View style={styles.activeTabIndicator} />}
           </TouchableOpacity>
         </View>
 
@@ -339,7 +341,7 @@ const UserProfileScreen = ({ navigation }) => {
           onPress={toggleEditMode}
         >
           <Text style={styles.editButtonText}>
-            {isEditing ? 'Save' : 'Edit'}
+            {isEditing ? t('Save') : t('Edit')}
           </Text>
         </TouchableOpacity>
 
@@ -356,14 +358,14 @@ const UserProfileScreen = ({ navigation }) => {
             onPress={() => setShowImageOptions(false)}
           >
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Change Profile Picture</Text>
+              <Text style={styles.modalTitle}>{t('Change Profile Picture')}</Text>
               
               <TouchableOpacity 
                 style={styles.modalOption}
                 onPress={() => mockSelectImage('camera')}
               >
                 <MaterialIcons name="camera-alt" size={24} color="#1E4640" />
-                <Text style={styles.modalOptionText}>Take Photo</Text>
+                <Text style={styles.modalOptionText}>{t('Take Photo')}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
@@ -371,14 +373,14 @@ const UserProfileScreen = ({ navigation }) => {
                 onPress={() => mockSelectImage('gallery')}
               >
                 <MaterialIcons name="photo-library" size={24} color="#1E4640" />
-                <Text style={styles.modalOptionText}>Choose from Gallery</Text>
+                <Text style={styles.modalOptionText}>{t('Choose from Gallery')}</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
                 style={styles.modalCancelButton}
                 onPress={() => setShowImageOptions(false)}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={styles.modalCancelText}>{t('Cancel')}</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
