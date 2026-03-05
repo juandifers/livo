@@ -28,13 +28,13 @@ const BookingsScreen = ({ navigation }) => {
   const [activeTab, setActiveTab] = useState('upcoming');
   const hasLoadedOnceRef = useRef(false);
 
-  const loadBookings = useCallback(async ({ silent = false } = {}) => {
+  const loadBookings = useCallback(async ({ silent = false, forceRefresh = false } = {}) => {
     try {
       if (!silent) {
         setIsLoading(true);
       }
 
-      const result = await bookingApi.getUserBookings();
+      const result = await bookingApi.getUserBookings({ forceRefresh });
       if (result.success) {
         setBookings(result.data);
       } else {
@@ -65,8 +65,23 @@ const BookingsScreen = ({ navigation }) => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadBookings({ silent: true });
+    loadBookings({ silent: true, forceRefresh: true });
   };
+
+  const handleBookingUpdated = useCallback((updatedBooking) => {
+    const bookingId = updatedBooking?._id;
+    if (!bookingId) return;
+
+    setBookings((prev) => {
+      if (!Array.isArray(prev) || prev.length === 0) return prev;
+      const index = prev.findIndex((booking) => String(booking._id) === String(bookingId));
+      if (index === -1) return prev;
+
+      const next = [...prev];
+      next[index] = { ...next[index], ...updatedBooking };
+      return next;
+    });
+  }, []);
 
   // Filter and sort bookings based on active tab
   const getFilteredBookings = () => {
@@ -139,8 +154,12 @@ const BookingsScreen = ({ navigation }) => {
   };
 
   // Add a navigation handler for booking details
-  const navigateToBookingDetail = (bookingId) => {
-    navigation.navigate('BookingDetail', { bookingId });
+  const navigateToBookingDetail = (booking) => {
+    navigation.navigate('BookingDetail', {
+      bookingId: booking?._id,
+      booking,
+      onBookingUpdated: handleBookingUpdated
+    });
   };
 
   const renderEmptyState = () => (
@@ -179,7 +198,7 @@ const BookingsScreen = ({ navigation }) => {
     return (
       <TouchableOpacity 
         style={styles.bookingCard}
-        onPress={() => navigateToBookingDetail(item._id)}
+        onPress={() => navigateToBookingDetail(item)}
       >
         <Image 
           source={{ uri: getAssetImage(item.asset) }}

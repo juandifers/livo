@@ -2,50 +2,114 @@ import apiClient, { DEV_MODE } from './apiClient';
 import { testBookings } from '../utils/testData';
 import DateUtils from '../utils/dateUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { invalidateCachePrefix, readCachedValue, writeCachedValue } from '../utils/dataCache';
 
 let hasLoggedFreedAlertFallback = false;
 
+const BOOKINGS_CACHE_PREFIX = 'bookings:user:';
+const BOOKING_DETAIL_CACHE_PREFIX = 'booking:detail:';
+const ASSET_BOOKINGS_CACHE_PREFIX = 'bookings:asset:';
+const ALLOCATION_CACHE_PREFIX = 'allocation:';
+const ASSET_AVAILABILITY_CACHE_PREFIX = 'availability:asset:';
+const FREED_DATE_ALERTS_CACHE_PREFIX = 'alerts:freed-dates:';
+
+const USER_BOOKINGS_MEMORY_TTL_MS = 30 * 1000;
+const USER_BOOKINGS_DISK_TTL_MS = 5 * 60 * 1000;
+const USER_ALLOCATION_MEMORY_TTL_MS = 20 * 1000;
+const USER_ALLOCATION_DISK_TTL_MS = 60 * 1000;
+const ASSET_BOOKINGS_MEMORY_TTL_MS = 30 * 1000;
+const ASSET_BOOKINGS_DISK_TTL_MS = 2 * 60 * 1000;
+const BOOKING_DETAIL_MEMORY_TTL_MS = 30 * 1000;
+const BOOKING_DETAIL_DISK_TTL_MS = 3 * 60 * 1000;
+const ASSET_AVAILABILITY_MEMORY_TTL_MS = 10 * 1000;
+const ASSET_AVAILABILITY_DISK_TTL_MS = 30 * 1000;
+const FREED_ALERTS_MEMORY_TTL_MS = 30 * 1000;
+const FREED_ALERTS_DISK_TTL_MS = 2 * 60 * 1000;
+const STALE_FALLBACK_TTL_MS = 24 * 60 * 60 * 1000;
+
+const parseBookingList = (bookings) => (
+  Array.isArray(bookings) ? bookings.map((booking) => DateUtils.parseBookingDates(booking)) : []
+);
+const getBookingsCacheKey = (userId) => `${BOOKINGS_CACHE_PREFIX}${userId || 'self'}`;
+const getBookingDetailCacheKey = (bookingId) => `${BOOKING_DETAIL_CACHE_PREFIX}${bookingId}`;
+const getAllocationCacheKey = (userId, assetId) => `${ALLOCATION_CACHE_PREFIX}${userId}:${assetId}`;
+const getAssetBookingsCacheKey = (assetId) => `${ASSET_BOOKINGS_CACHE_PREFIX}${assetId}`;
+const getFreedDateAlertsCacheKey = (userId, limit) => `${FREED_DATE_ALERTS_CACHE_PREFIX}${userId || 'self'}:${limit}`;
+
+const resolveAssetId = (payload = {}) => {
+  if (!payload) return null;
+  if (typeof payload === 'string') return payload;
+  if (typeof payload !== 'object') return null;
+
+  const rawAsset = payload.assetId || payload.asset || payload.booking?.asset;
+  if (!rawAsset) return null;
+  if (typeof rawAsset === 'string') return rawAsset;
+  return rawAsset._id || rawAsset.id || null;
+};
+
+const invalidateBookingDataCaches = async ({ assetId } = {}) => {
+  const invalidations = [
+    invalidateCachePrefix(BOOKINGS_CACHE_PREFIX),
+    invalidateCachePrefix(BOOKING_DETAIL_CACHE_PREFIX),
+    invalidateCachePrefix(ALLOCATION_CACHE_PREFIX),
+    invalidateCachePrefix(ASSET_BOOKINGS_CACHE_PREFIX),
+    invalidateCachePrefix(FREED_DATE_ALERTS_CACHE_PREFIX)
+  ];
+
+  if (assetId) {
+    invalidations.push(invalidateCachePrefix(`${ASSET_AVAILABILITY_CACHE_PREFIX}${assetId}:`));
+  } else {
+    invalidations.push(invalidateCachePrefix(ASSET_AVAILABILITY_CACHE_PREFIX));
+  }
+
+  await Promise.all(invalidations);
+};
+
 // Booking API endpoints
-const getUserBookings = async () => {
+const getUserBookings = async ({ forceRefresh = false } = {}) => {
   try {
     // In development mode, use test data
     if (DEV_MODE) {
       return { success: true, data: testBookings };
     }
-    
-    // In production mode - first get current user ID, then fetch bookings for that user
+
+    const userId = await getCurrentUserId();
+    const cacheKey = getBookingsCacheKey(userId);
+
+    if (!forceRefresh) {
+      const cached = await readCachedValue(cacheKey, {
+        memoryTtlMs: USER_BOOKINGS_MEMORY_TTL_MS,
+        diskTtlMs: USER_BOOKINGS_DISK_TTL_MS
+      });
+      if (cached.hit) {
+        return { success: true, data: parseBookingList(cached.value), cached: true, stale: cached.stale };
+      }
+    }
+
     try {
-      let userId = null;
-
-      // Prefer locally cached user ID to avoid an extra network roundtrip.
-      const storedUser = await AsyncStorage.getItem('user');
-      if (storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser);
-          userId = parsedUser?._id || parsedUser?.id || null;
-        } catch (_) {
-          userId = null;
-        }
-      }
-
-      if (!userId) {
-        const userResponse = await apiClient.get('/auth/me');
-        const user = userResponse.data?.data;
-        userId = user?._id || null;
-        if (userId && user) {
-          await AsyncStorage.setItem('user', JSON.stringify(user));
-        }
-      }
-
       const endpoint = userId ? `/bookings?user=${userId}` : '/bookings';
-      const response = await apiClient.get(endpoint);
-      const bookings = response.data.data.map(booking => DateUtils.parseBookingDates(booking));
-      return { success: true, data: bookings };
-    } catch (_userError) {
-      // If we can't get user ID, try the old endpoint as fallback
-      const response = await apiClient.get('/bookings');
-      const bookings = response.data.data.map(booking => DateUtils.parseBookingDates(booking));
-      return { success: true, data: bookings };
+      let response;
+      try {
+        response = await apiClient.get(endpoint);
+      } catch (primaryError) {
+        if (!userId) throw primaryError;
+        // Fallback for API deployments that don't accept the user filter.
+        response = await apiClient.get('/bookings');
+      }
+
+      const bookings = Array.isArray(response.data?.data) ? response.data.data : [];
+      await writeCachedValue(cacheKey, bookings);
+      return { success: true, data: parseBookingList(bookings) };
+    } catch (networkError) {
+      const staleCache = await readCachedValue(cacheKey, {
+        memoryTtlMs: STALE_FALLBACK_TTL_MS,
+        diskTtlMs: STALE_FALLBACK_TTL_MS,
+        allowStale: true
+      });
+      if (staleCache.hit) {
+        return { success: true, data: parseBookingList(staleCache.value), cached: true, stale: true };
+      }
+      throw networkError;
     }
   } catch (error) {
     console.error('Error fetching user bookings:', error);
@@ -56,7 +120,7 @@ const getUserBookings = async () => {
   }
 };
 
-const getUserAllocation = async (userId, assetId) => {
+const getUserAllocation = async (userId, assetId, { forceRefresh = false } = {}) => {
   try {
     // In development mode, simulate allocation data
     if (DEV_MODE) {
@@ -123,11 +187,33 @@ const getUserAllocation = async (userId, assetId) => {
         }
       };
     }
-    
+
+    const cacheKey = getAllocationCacheKey(userId, assetId);
+    if (!forceRefresh) {
+      const cached = await readCachedValue(cacheKey, {
+        memoryTtlMs: USER_ALLOCATION_MEMORY_TTL_MS,
+        diskTtlMs: USER_ALLOCATION_DISK_TTL_MS
+      });
+      if (cached.hit) {
+        return { success: true, data: cached.value, cached: true, stale: cached.stale };
+      }
+    }
+
     // In production mode
     const response = await apiClient.get(`/bookings/allocation/${userId}/${assetId}`);
-    return { success: true, data: response.data.data };
+    const allocation = response.data?.data || {};
+    await writeCachedValue(cacheKey, allocation);
+    return { success: true, data: allocation };
   } catch (error) {
+    const staleCache = await readCachedValue(getAllocationCacheKey(userId, assetId), {
+      memoryTtlMs: STALE_FALLBACK_TTL_MS,
+      diskTtlMs: STALE_FALLBACK_TTL_MS,
+      allowStale: true
+    });
+    if (staleCache.hit) {
+      return { success: true, data: staleCache.value, cached: true, stale: true };
+    }
+
     return { 
       success: false, 
       error: error.response?.data?.error || 'Failed to fetch user allocation' 
@@ -135,18 +221,40 @@ const getUserAllocation = async (userId, assetId) => {
   }
 };
 
-const getAssetBookings = async (assetId) => {
+const getAssetBookings = async (assetId, { forceRefresh = false } = {}) => {
   try {
     // In development mode, filter test bookings for the asset
     if (DEV_MODE) {
       const assetBookings = testBookings.filter(booking => booking.asset._id === assetId);
       return { success: true, data: assetBookings };
     }
-    
+
+    const cacheKey = getAssetBookingsCacheKey(assetId);
+    if (!forceRefresh) {
+      const cached = await readCachedValue(cacheKey, {
+        memoryTtlMs: ASSET_BOOKINGS_MEMORY_TTL_MS,
+        diskTtlMs: ASSET_BOOKINGS_DISK_TTL_MS
+      });
+      if (cached.hit) {
+        return { success: true, data: cached.value, cached: true, stale: cached.stale };
+      }
+    }
+
     // In production mode
     const response = await apiClient.get(`/bookings/asset/${assetId}`);
-    return { success: true, data: response.data.data };
+    const bookings = Array.isArray(response.data?.data) ? response.data.data : [];
+    await writeCachedValue(cacheKey, bookings);
+    return { success: true, data: bookings };
   } catch (error) {
+    const staleCache = await readCachedValue(getAssetBookingsCacheKey(assetId), {
+      memoryTtlMs: STALE_FALLBACK_TTL_MS,
+      diskTtlMs: STALE_FALLBACK_TTL_MS,
+      allowStale: true
+    });
+    if (staleCache.hit) {
+      return { success: true, data: staleCache.value, cached: true, stale: true };
+    }
+
     return { 
       success: false, 
       error: error.response?.data?.error || 'Failed to fetch asset bookings' 
@@ -154,7 +262,7 @@ const getAssetBookings = async (assetId) => {
   }
 };
 
-const getBookingById = async (bookingId) => {
+const getBookingById = async (bookingId, { forceRefresh = false } = {}) => {
   try {
     // In development mode, find booking in test data
     if (DEV_MODE) {
@@ -165,11 +273,35 @@ const getBookingById = async (bookingId) => {
         return { success: false, error: 'Booking not found' };
       }
     }
-    
+
+    const cacheKey = getBookingDetailCacheKey(bookingId);
+    if (!forceRefresh) {
+      const cached = await readCachedValue(cacheKey, {
+        memoryTtlMs: BOOKING_DETAIL_MEMORY_TTL_MS,
+        diskTtlMs: BOOKING_DETAIL_DISK_TTL_MS
+      });
+      if (cached.hit) {
+        return { success: true, data: cached.value, cached: true, stale: cached.stale };
+      }
+    }
+
     // In production mode
     const response = await apiClient.get(`/bookings/${bookingId}`);
-    return { success: true, data: response.data.data };
+    const booking = response.data?.data || null;
+    if (booking) {
+      await writeCachedValue(cacheKey, booking);
+    }
+    return { success: true, data: booking };
   } catch (error) {
+    const staleCache = await readCachedValue(getBookingDetailCacheKey(bookingId), {
+      memoryTtlMs: STALE_FALLBACK_TTL_MS,
+      diskTtlMs: STALE_FALLBACK_TTL_MS,
+      allowStale: true
+    });
+    if (staleCache.hit) {
+      return { success: true, data: staleCache.value, cached: true, stale: true };
+    }
+
     return { 
       success: false, 
       error: error.response?.data?.error || 'Failed to fetch booking details' 
@@ -195,7 +327,10 @@ const createBooking = async (bookingData) => {
     
     // In production mode
     const response = await apiClient.post('/bookings', preparedData);
-    return { success: true, data: response.data.data };
+    const payload = response.data?.data;
+    const assetId = resolveAssetId({ assetId: preparedData.assetId, booking: payload?.booking, asset: payload?.asset });
+    await invalidateBookingDataCaches({ assetId });
+    return { success: true, data: payload };
   } catch (error) {
     return { 
       success: false, 
@@ -213,7 +348,10 @@ const updateBooking = async (bookingId, updateData) => {
     
     // In production mode
     const response = await apiClient.put(`/bookings/${bookingId}`, updateData);
-    return { success: true, data: response.data.data };
+    const payload = response.data?.data;
+    const assetId = resolveAssetId(payload);
+    await invalidateBookingDataCaches({ assetId });
+    return { success: true, data: payload };
   } catch (error) {
     return { 
       success: false, 
@@ -231,7 +369,10 @@ const cancelBooking = async (bookingId) => {
     
     // In production mode
     const response = await apiClient.delete(`/bookings/${bookingId}`);
-    return { success: true, data: response.data.data };
+    const payload = response.data?.data;
+    const assetId = resolveAssetId(payload);
+    await invalidateBookingDataCaches({ assetId });
+    return { success: true, data: payload };
   } catch (error) {
     return { 
       success: false, 
@@ -402,7 +543,7 @@ const getFreedDateAlertsFallback = async (limit = 20) => {
   return alerts;
 };
 
-const getFreedDateAlerts = async (limit = 20) => {
+const getFreedDateAlerts = async (limit = 20, { forceRefresh = false } = {}) => {
   const safeLimit = Number.isFinite(Number(limit)) ? Number(limit) : 20;
 
   try {
@@ -410,9 +551,26 @@ const getFreedDateAlerts = async (limit = 20) => {
       return { success: true, data: [] };
     }
 
+    const userId = await getCurrentUserId();
+    const cacheKey = getFreedDateAlertsCacheKey(userId, safeLimit);
+
+    if (!forceRefresh) {
+      const cached = await readCachedValue(cacheKey, {
+        memoryTtlMs: FREED_ALERTS_MEMORY_TTL_MS,
+        diskTtlMs: FREED_ALERTS_DISK_TTL_MS
+      });
+      if (cached.hit) {
+        return { success: true, data: cached.value, cached: true, stale: cached.stale };
+      }
+    }
+
     const response = await apiClient.get(`/bookings/alerts/freed-dates?limit=${encodeURIComponent(safeLimit)}`);
-    return { success: true, data: response.data?.data || [] };
+    const alerts = response.data?.data || [];
+    await writeCachedValue(cacheKey, alerts);
+    return { success: true, data: alerts };
   } catch (error) {
+    const userId = await getCurrentUserId();
+    const cacheKey = getFreedDateAlertsCacheKey(userId, safeLimit);
     const status = error.response?.status;
     const backendError = error.response?.data?.error;
     const requestUrl = error.config?.url || '/bookings/alerts/freed-dates';
@@ -424,6 +582,7 @@ const getFreedDateAlerts = async (limit = 20) => {
           hasLoggedFreedAlertFallback = true;
           console.warn('Freed-date alerts endpoint not found; using client-side fallback.');
         }
+        await writeCachedValue(cacheKey, fallbackAlerts);
         return { success: true, data: fallbackAlerts };
       } catch (fallbackError) {
         console.error('Freed-date alerts fallback failed:', fallbackError?.message || fallbackError);
@@ -455,6 +614,15 @@ const getFreedDateAlerts = async (limit = 20) => {
       message: backendError || error.message
     });
 
+    const staleCache = await readCachedValue(cacheKey, {
+      memoryTtlMs: STALE_FALLBACK_TTL_MS,
+      diskTtlMs: STALE_FALLBACK_TTL_MS,
+      allowStale: true
+    });
+    if (staleCache.hit) {
+      return { success: true, data: staleCache.value, cached: true, stale: true };
+    }
+
     return {
       success: false,
       error: backendError || `Failed to fetch freed-date alerts${status ? ` (HTTP ${status})` : ''}`
@@ -462,7 +630,11 @@ const getFreedDateAlerts = async (limit = 20) => {
   }
 };
 
-const getAssetAvailability = async (assetId, startDate, endDate) => {
+const getAssetAvailability = async (assetId, startDate, endDate, { forceRefresh = false } = {}) => {
+  const normalizedStart = toDateOnlyString(startDate) || String(startDate || '');
+  const normalizedEnd = toDateOnlyString(endDate) || String(endDate || '');
+  const cacheKey = `${ASSET_AVAILABILITY_CACHE_PREFIX}${assetId}:${normalizedStart}:${normalizedEnd}`;
+
   try {
     // In development mode, return mock availability data
     if (DEV_MODE) {
@@ -490,6 +662,16 @@ const getAssetAvailability = async (assetId, startDate, endDate) => {
           bookings: []
         }
       };
+    }
+
+    if (!forceRefresh) {
+      const cached = await readCachedValue(cacheKey, {
+        memoryTtlMs: ASSET_AVAILABILITY_MEMORY_TTL_MS,
+        diskTtlMs: ASSET_AVAILABILITY_DISK_TTL_MS
+      });
+      if (cached.hit) {
+        return { success: true, data: cached.value, cached: true, stale: cached.stale };
+      }
     }
     
     // In production mode - construct query parameters
@@ -527,19 +709,32 @@ const getAssetAvailability = async (assetId, startDate, endDate) => {
       });
     }
     
-    return { 
+    const availabilityPayload = {
+      unavailableDates,
+      specialDates: specialDates || {
+        type1: [],
+        type2: []
+      },
+      bookings,
+      calendar
+    };
+
+    await writeCachedValue(cacheKey, availabilityPayload);
+
+    return {
       success: true, 
-      data: {
-        unavailableDates,
-        specialDates: specialDates || {
-          type1: [],
-          type2: []
-        },
-        bookings,
-        calendar
-      }
+      data: availabilityPayload
     };
   } catch (error) {
+    const staleCache = await readCachedValue(cacheKey, {
+      memoryTtlMs: STALE_FALLBACK_TTL_MS,
+      diskTtlMs: STALE_FALLBACK_TTL_MS,
+      allowStale: true
+    });
+    if (staleCache.hit) {
+      return { success: true, data: staleCache.value, cached: true, stale: true };
+    }
+
     return { 
       success: false, 
       error: error.response?.data?.error || 'Failed to fetch asset availability' 
@@ -555,6 +750,7 @@ export default {
   createBooking,
   updateBooking,
   cancelBooking,
+  invalidateBookingDataCaches,
   getFreedDateAlerts,
   getAssetAvailability
 }; 

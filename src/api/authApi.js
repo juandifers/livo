@@ -2,6 +2,8 @@ import apiClient, { DEV_MODE } from './apiClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { testUser } from '../utils/testData';
 import { getToken, removeToken, setToken } from '../utils/tokenStorage';
+import bookingApi from './bookingApi';
+import assetApi from './assetApi';
 
 const parseApiErrorMessage = (error, fallbackMessage) => {
   const data = error?.response?.data;
@@ -43,6 +45,17 @@ const parseApiErrorMessage = (error, fallbackMessage) => {
   return fallbackMessage;
 };
 
+const clearSessionCaches = async () => {
+  try {
+    await Promise.all([
+      bookingApi.invalidateBookingDataCaches(),
+      assetApi.invalidateUserAssetsCache()
+    ]);
+  } catch (_) {
+    // Best effort cache cleanup.
+  }
+};
+
 // Auth API endpoints
 const login = async (email, password) => {
   try {
@@ -53,6 +66,8 @@ const login = async (email, password) => {
         // Create a fake token
         const token = 'fake-jwt-token-for-development';
         
+        await clearSessionCaches();
+
         // Store token and user data
         await setToken(token);
         await AsyncStorage.setItem('user', JSON.stringify(testUser));
@@ -71,6 +86,8 @@ const login = async (email, password) => {
     const response = await apiClient.post('/auth/login', { email, password });
     const { token } = response.data;
     
+    await clearSessionCaches();
+
     // Store the token first
     await setToken(token);
     
@@ -101,6 +118,7 @@ const logout = async () => {
   try {
     // In development mode, just clear storage
     if (DEV_MODE) {
+      await clearSessionCaches();
       await removeToken();
       await AsyncStorage.removeItem('user');
       return { success: true };
@@ -108,6 +126,7 @@ const logout = async () => {
     
     // In production mode, call the API
     await apiClient.get('/auth/logout');
+    await clearSessionCaches();
     await removeToken();
     await AsyncStorage.removeItem('user');
     return { success: true };
@@ -123,6 +142,7 @@ const deleteMyAccount = async (currentPassword, confirmationText) => {
   try {
     // In development mode, simulate success and clear auth data
     if (DEV_MODE) {
+      await clearSessionCaches();
       await removeToken();
       await AsyncStorage.removeItem('user');
       return { success: true };
@@ -152,6 +172,7 @@ const deleteMyAccount = async (currentPassword, confirmationText) => {
       await apiClient.delete('/users/me', { data: payload });
     }
 
+    await clearSessionCaches();
     await removeToken();
     await AsyncStorage.removeItem('user');
     return { success: true };

@@ -31,7 +31,7 @@ const HomeScreen = ({ navigation }) => {
   const skipNextFocusRefreshRef = useRef(true);
   const loadInFlightRef = useRef(false);
 
-  const loadData = async () => {
+  const loadData = async ({ forceRefresh = false } = {}) => {
     if (loadInFlightRef.current) {
       return;
     }
@@ -41,7 +41,7 @@ const HomeScreen = ({ navigation }) => {
       setIsLoading(true);
       
       // Get user's owned assets
-      const assetsResult = await assetApi.getUserAssets();
+      const assetsResult = await assetApi.getUserAssets({ forceRefresh });
       if (assetsResult.success) {
         setOwnedAssets(assetsResult.data);
       }
@@ -71,7 +71,7 @@ const HomeScreen = ({ navigation }) => {
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadData();
+    loadData({ forceRefresh: true });
   };
 
   // Get asset image from uploaded photos or fallback to placeholder
