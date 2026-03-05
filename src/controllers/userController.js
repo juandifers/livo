@@ -135,6 +135,77 @@ exports.deleteUser = async (req, res, next) => {
   }
 };
 
+// @desc    Delete current user account
+// @route   DELETE /api/users/me
+// @access  Private
+exports.deleteMyAccount = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('+password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+
+    if (!user.password) {
+      return res.status(400).json({
+        success: false,
+        error: 'Account setup not completed. Unable to delete account.'
+      });
+    }
+
+    const isPasswordValid = await user.matchPassword(req.body.currentPassword);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: 'Current password is incorrect'
+      });
+    }
+
+    // A user that owns assets must be handled by an admin to prevent ownership gaps.
+    const ownedAssetCount = await Asset.countDocuments({ 'owners.user': user._id });
+    if (ownedAssetCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'You cannot delete your account while you are an owner of one or more assets. Please contact an administrator.'
+      });
+    }
+
+    const now = new Date();
+    const upcomingBookings = await Booking.countDocuments({
+      user: user._id,
+      status: { $ne: 'cancelled' },
+      endDate: { $gte: now }
+    });
+
+    if (upcomingBookings > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'You have upcoming bookings. Cancel them before deleting your account.'
+      });
+    }
+
+    // Remove historical and cancelled bookings tied to this user to avoid dangling references.
+    await Booking.deleteMany({ user: user._id });
+    await User.deleteOne({ _id: user._id });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        message: 'Account deleted successfully'
+      }
+    });
+  } catch (err) {
+    console.error('Error deleting account:', err);
+    return res.status(500).json({
+      success: false,
+      error: 'Server Error'
+    });
+  }
+};
+
 // @desc    Get user's owned assets with detailed information
 // @route   GET /api/users/me/assets
 // @access  Private
@@ -229,6 +300,8 @@ exports.getUserOwnedAssets = async (req, res) => {
         name: asset.name,
         type: asset.type,
         location: asset.location,
+        locationAddress: asset.locationAddress,
+        propertyManager: asset.propertyManager,
         description: asset.description,
         capacity: asset.capacity,
         photos: asset.photos,

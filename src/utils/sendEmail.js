@@ -3,11 +3,30 @@ const config = require('../config/config');
 const fs = require('fs');
 const path = require('path');
 
-// Environment check for testing mode
-const isTesting = process.env.NODE_ENV === 'test' || process.env.MOCK_EMAIL === 'true';
+const shouldMockByFlag = process.env.NODE_ENV === 'test' || process.env.MOCK_EMAIL === 'true';
+const isSmtpConfigured = Boolean(config.email.host && config.email.username && config.email.password);
+const shouldAllowMockFallback = config.email.allowMockFallback === true;
 
-// Check if SMTP is configured
-const isSmtpConfigured = config.email.host && config.email.username && config.email.password;
+const writeEmailToLogFile = (options, metadata = {}) => {
+  const emailLog = {
+    to: options.email,
+    subject: options.subject,
+    message: options.message,
+    html: options.html,
+    metadata,
+    timestamp: new Date().toISOString()
+  };
+
+  const logsDir = path.join(__dirname, '../../logs');
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
+
+  fs.appendFileSync(
+    path.join(logsDir, 'email-logs.json'),
+    JSON.stringify(emailLog) + '\n'
+  );
+};
 
 /**
  * Send email using nodemailer
@@ -19,53 +38,37 @@ const isSmtpConfigured = config.email.host && config.email.username && config.em
  * @returns {Promise}
  */
 const sendEmail = async (options) => {
-  // If in testing mode or SMTP not configured, log email instead of sending
-  if (isTesting || !isSmtpConfigured) {
-    console.log('Mock email service active (not sending real emails)');
-    console.log('SMTP Status:', isSmtpConfigured ? 'Configured' : 'Not configured');
-    console.log('-------------------------------------------------');
-    console.log(`To: ${options.email}`);
-    console.log(`Subject: ${options.subject}`);
-    console.log(`Message: ${options.message}`);
-    
-    // Optionally save to a file for inspection
-    const emailLog = {
-      to: options.email,
-      subject: options.subject,
-      message: options.message,
-      html: options.html,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Create logs directory if it doesn't exist
-    const logsDir = path.join(__dirname, '../../logs');
-    if (!fs.existsSync(logsDir)) {
-      fs.mkdirSync(logsDir, { recursive: true });
-    }
-    
-    // Append to log file
-    fs.appendFileSync(
-      path.join(logsDir, 'email-logs.json'), 
-      JSON.stringify(emailLog) + '\n'
-    );
-    
-    // For testing purpose, return a fake messageId
+  if (shouldMockByFlag) {
+    console.log('[Email] Mock mode enabled by NODE_ENV=test or MOCK_EMAIL=true.');
+    writeEmailToLogFile(options, { reason: 'explicit_mock_mode' });
     return { messageId: `mock-email-${Date.now()}@test.com` };
   }
-  
+
+  if (!isSmtpConfigured) {
+    const errorMessage = 'SMTP is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD.';
+
+    if (config.email.strictTransport) {
+      const err = new Error(errorMessage);
+      err.code = 'SMTP_NOT_CONFIGURED';
+      throw err;
+    }
+
+    console.log('[Email] SMTP not configured. Falling back to logged mock email.');
+    writeEmailToLogFile(options, { reason: 'smtp_not_configured' });
+    return { messageId: `mock-email-${Date.now()}@test.com` };
+  }
+
   try {
-    // Create transporter
     const transporter = nodemailer.createTransport({
       host: config.email.host,
       port: config.email.port,
-      secure: config.email.port === 465, // true for 465, false for other ports
+      secure: Number(config.email.port) === 465,
       auth: {
         user: config.email.username,
         pass: config.email.password
       }
     });
 
-    // Define email options
     const mailOptions = {
       from: `${config.email.fromName} <${config.email.from}>`,
       to: options.email,
@@ -74,23 +77,22 @@ const sendEmail = async (options) => {
       html: options.html || ''
     };
 
-    // Send email
     const info = await transporter.sendMail(mailOptions);
-
     console.log(`Email sent: ${info.messageId}`);
-    
     return info;
   } catch (error) {
     console.error('Email sending failed:', error.message);
-    
-    // We'll throw the error in production, but in development/test we'll 
-    // return a mock success to allow testing to continue
-    if (process.env.NODE_ENV === 'production') {
-      throw error;
-    } else {
-      console.log('Using mock email response due to SMTP error');
+
+    if (shouldAllowMockFallback) {
+      console.log('[Email] Using mock fallback because ALLOW_EMAIL_MOCK_FALLBACK=true.');
+      writeEmailToLogFile(options, {
+        reason: 'smtp_send_failed_fallback',
+        error: error.message
+      });
       return { messageId: `error-mock-${Date.now()}@test.com` };
     }
+
+    throw error;
   }
 };
 

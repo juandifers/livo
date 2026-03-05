@@ -2,6 +2,8 @@ const Asset = require('../models/Asset');
 const User = require('../models/User');
 const { handleNullOwners } = require('../utils/assetUtils');
 const DateUtils = require('../utils/dateUtils');
+const { isCloudinaryConfigured, uploadBuffer } = require('../config/cloudinary');
+const config = require('../config/config');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -11,53 +13,16 @@ const fs = require('fs');
 // @access  Public
 exports.getAssets = async (req, res) => {
   try {
-    // Get assets from database directly without validation
-    const assetsFromDb = await Asset.find().lean();
-    
-    // Populate user info separately to avoid validation errors
-    const assets = await Promise.all(
-      assetsFromDb.map(async (asset) => {
-        try {
-          // Only populate valid user references
-          if (asset.owners && Array.isArray(asset.owners)) {
-            const populatedOwners = await Promise.all(
-              asset.owners.map(async (owner) => {
-                if (!owner.user) return owner;
-                
-                try {
-                  const user = await User.findById(owner.user).select('name lastName email').lean();
-                  if (user) {
-                    return {
-                      ...owner,
-                      user
-                    };
-                  }
-                  return owner;
-                } catch (err) {
-                  return owner;
-                }
-              })
-            );
-            
-            return {
-              ...asset,
-              owners: populatedOwners
-            };
-          }
-          return asset;
-        } catch (err) {
-          console.error(`Error populating asset ${asset._id}:`, err);
-          return asset;
-        }
-      })
-    );
-    
-    // Handle null owners for each asset
-    let assetsModified = false;
-    let assetErrors = [];
-    
+    const dbStartedAt = Date.now();
+    const assets = await Asset.find()
+      .populate('owners.user', 'name lastName email')
+      .lean();
+    req.perf?.add('dbRead', Date.now() - dbStartedAt);
+
+    const assetErrors = [];
     const fixedAssets = [];
-    
+    const computeStartedAt = Date.now();
+
     for (const asset of assets) {
       try {
         // Skip assets that don't have an owners array
@@ -81,7 +46,6 @@ exports.getAssets = async (req, res) => {
         });
         
         if (validOwners.length !== asset.owners.length) {
-          assetsModified = true;
           console.log(`Filtered invalid owners from asset ${asset._id}`);
         }
         
@@ -111,6 +75,7 @@ exports.getAssets = async (req, res) => {
         });
       }
     }
+    req.perf?.add('compute', Date.now() - computeStartedAt);
     
     res.status(200).json({
       success: true,
@@ -167,12 +132,23 @@ exports.getAsset = async (req, res) => {
 // @access  Private
 exports.createAsset = async (req, res) => {
   try {
+    const propertyManager =
+      req.body.propertyManager && typeof req.body.propertyManager === 'object'
+        ? {
+            name: req.body.propertyManager.name,
+            phone: req.body.propertyManager.phone,
+            email: req.body.propertyManager.email
+          }
+        : undefined;
+
     // Create asset data from request body
     const assetData = {
       name: req.body.name,
       type: req.body.type,
       description: req.body.description,
       location: req.body.location,
+      locationAddress: req.body.locationAddress,
+      propertyManager,
       capacity: req.body.capacity,
       photos: req.body.photos || [],
       amenities: req.body.amenities || [],
@@ -674,8 +650,9 @@ exports.updateOwners = async (req, res) => {
   }
 };
 
-// Configure multer for photo uploads
-const storage = multer.diskStorage({
+// Multer: memory storage for Cloudinary (production), disk for local dev fallback
+const memStorage = multer.memoryStorage();
+const diskStorageConfig = multer.diskStorage({
   destination: function (req, file, cb) {
     const uploadPath = path.join(__dirname, '../../uploads/assets');
     if (!fs.existsSync(uploadPath)) {
@@ -689,10 +666,12 @@ const storage = multer.diskStorage({
   }
 });
 
+const shouldUseDiskStorage = !isCloudinaryConfigured && config.env !== 'production';
+
 const upload = multer({
-  storage: storage,
+  storage: shouldUseDiskStorage ? diskStorageConfig : memStorage,
   limits: {
-    fileSize: 5 * 1024 * 1024 // 5MB limit
+    fileSize: 4 * 1024 * 1024 // Keep below common serverless body caps
   },
   fileFilter: function (req, file, cb) {
     if (file.mimetype.startsWith('image/')) {
@@ -709,6 +688,13 @@ const upload = multer({
 exports.uploadPhotos = async (req, res) => {
   try {
     const assetId = req.params.id;
+
+    if (!isCloudinaryConfigured && config.env === 'production') {
+      return res.status(500).json({
+        success: false,
+        error: 'Cloudinary is not configured in production. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET.'
+      });
+    }
     
     // Check if asset exists
     const asset = await Asset.findById(assetId);
@@ -722,6 +708,12 @@ exports.uploadPhotos = async (req, res) => {
     // Handle multer upload
     upload.array('photos', 10)(req, res, async (err) => {
       if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            error: 'Each image must be 4MB or smaller'
+          });
+        }
         return res.status(400).json({
           success: false,
           error: err.message
@@ -736,10 +728,19 @@ exports.uploadPhotos = async (req, res) => {
       }
 
       try {
-        // Generate URLs for the uploaded photos
-        const photoUrls = req.files.map(file => {
-          return `/uploads/assets/${file.filename}`;
-        });
+        let photoUrls;
+
+        if (isCloudinaryConfigured) {
+          // Upload buffers to Cloudinary and collect secure URLs
+          photoUrls = [];
+          for (const file of req.files) {
+            const { secure_url } = await uploadBuffer(file.buffer, file.mimetype, 'livo-assets');
+            photoUrls.push(secure_url);
+          }
+        } else {
+          // Local disk: use relative paths (served by express.static)
+          photoUrls = req.files.map(file => `/uploads/assets/${file.filename}`);
+        }
 
         // Update asset with new photo URLs
         const updatedAsset = await Asset.findByIdAndUpdate(
@@ -757,13 +758,15 @@ exports.uploadPhotos = async (req, res) => {
           }
         });
       } catch (updateErr) {
-        // Clean up uploaded files if database update fails
-        req.files.forEach(file => {
-          const filePath = path.join(__dirname, '../../uploads/assets', file.filename);
-          if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-          }
-        });
+        // Clean up local files only when using disk storage
+        if (shouldUseDiskStorage && req.files) {
+          req.files.forEach(file => {
+            const filePath = path.join(__dirname, '../../uploads/assets', file.filename);
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+          });
+        }
 
         res.status(500).json({
           success: false,
@@ -777,4 +780,62 @@ exports.uploadPhotos = async (req, res) => {
       error: 'Server Error: ' + err.message
     });
   }
-}; 
+};
+
+// @desc    Delete a photo from an asset
+// @route   DELETE /api/assets/:id/photos
+// @access  Private (Admin only)
+exports.deletePhoto = async (req, res) => {
+  try {
+    const assetId = req.params.id;
+    const { photoUrl, index } = req.body || {};
+
+    const asset = await Asset.findById(assetId);
+    if (!asset) {
+      return res.status(404).json({
+        success: false,
+        error: 'Asset not found'
+      });
+    }
+
+    if (!Array.isArray(asset.photos) || asset.photos.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Asset has no photos'
+      });
+    }
+
+    let removeIndex = -1;
+
+    if (typeof index === 'number' && Number.isInteger(index)) {
+      removeIndex = index;
+    } else if (typeof photoUrl === 'string' && photoUrl.trim()) {
+      const target = photoUrl.trim();
+      removeIndex = asset.photos.findIndex((p) => p === target);
+    }
+
+    if (removeIndex < 0 || removeIndex >= asset.photos.length) {
+      return res.status(404).json({
+        success: false,
+        error: 'Photo not found on this asset'
+      });
+    }
+
+    const removed = asset.photos[removeIndex];
+    asset.photos.splice(removeIndex, 1);
+    await asset.save();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        removedPhoto: removed,
+        photos: asset.photos
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: 'Server Error: ' + err.message
+    });
+  }
+};

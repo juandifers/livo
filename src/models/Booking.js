@@ -231,6 +231,7 @@ BookingSchema.pre('validate', async function(next) {
 // Index to optimize queries
 BookingSchema.index({ user: 1, asset: 1, startDate: 1, endDate: 1 });
 BookingSchema.index({ asset: 1, status: 1, startDate: 1, endDate: 1 });
+BookingSchema.index({ status: 1, cancelledAt: -1, asset: 1, user: 1 });
 BookingSchema.index({ specialDateType: 1, year: 1 });
 BookingSchema.index({ shortTermCancelled: 1, status: 1 });
 BookingSchema.index({ isExtraDays: 1 });

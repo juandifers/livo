@@ -3,6 +3,90 @@ const User = require('../models/User');
 const Asset = require('../models/Asset');
 const SpecialDate = require('../models/SpecialDate');
 const DateUtils = require('../utils/dateUtils');
+const sendEmail = require('../utils/sendEmail');
+const {
+  getBookingConfirmationTemplate,
+  getBookingCancellationTemplate
+} = require('../utils/emailTemplates');
+
+const getUserDisplayName = (user) => {
+  if (!user) return 'there';
+  const firstName = user.name || '';
+  const lastName = user.lastName || '';
+  const fullName = `${firstName} ${lastName}`.trim();
+  return fullName || user.email || 'there';
+};
+
+const formatBookingRange = (booking) => {
+  const start = DateUtils.formatForApi(booking.startDate);
+  const end = DateUtils.formatForApi(booking.endDate);
+  return `${start} to ${end}`;
+};
+
+const formatBookingForResponse = (booking) => {
+  if (!booking) return booking;
+
+  const bookingObj = typeof booking.toObject === 'function' ? booking.toObject() : { ...booking };
+  return {
+    ...bookingObj,
+    startDate: DateUtils.formatForApi(bookingObj.startDate),
+    endDate: DateUtils.formatForApi(bookingObj.endDate),
+    createdAt: bookingObj.createdAt ? DateUtils.formatForApi(bookingObj.createdAt) : null,
+    cancelledAt: bookingObj.cancelledAt ? DateUtils.formatForApi(bookingObj.cancelledAt) : null,
+    reassignedAt: bookingObj.reassignedAt ? DateUtils.formatForApi(bookingObj.reassignedAt) : null,
+    overrideAt: bookingObj.overrideAt ? DateUtils.formatForApi(bookingObj.overrideAt) : null,
+    paymentDate: bookingObj.paymentDate ? DateUtils.formatForApi(bookingObj.paymentDate) : null
+  };
+};
+
+const trySendBookingConfirmationEmail = async ({ user, asset, bookings, createdByAdmin = false }) => {
+  try {
+    if (!user?.email || !Array.isArray(bookings) || bookings.length === 0) {
+      return;
+    }
+
+    const bookingRanges = bookings.map(formatBookingRange);
+    const emailTemplate = getBookingConfirmationTemplate({
+      userName: getUserDisplayName(user),
+      assetName: asset?.name || 'your asset',
+      bookingRanges,
+      createdByAdmin
+    });
+
+    await sendEmail({
+      email: user.email,
+      subject: `Booking Confirmed - ${asset?.name || 'Livo'}`,
+      message: emailTemplate.text,
+      html: emailTemplate.html
+    });
+  } catch (err) {
+    console.error('Booking confirmation email failed:', err.message);
+  }
+};
+
+const trySendBookingCancellationEmail = async ({ user, asset, booking, cancelledByAdmin = false }) => {
+  try {
+    if (!user?.email || !booking) {
+      return;
+    }
+
+    const emailTemplate = getBookingCancellationTemplate({
+      userName: getUserDisplayName(user),
+      assetName: asset?.name || 'your asset',
+      bookingRange: formatBookingRange(booking),
+      cancelledByAdmin
+    });
+
+    await sendEmail({
+      email: user.email,
+      subject: `Booking Cancelled - ${asset?.name || 'Livo'}`,
+      message: emailTemplate.text,
+      html: emailTemplate.html
+    });
+  } catch (err) {
+    console.error('Booking cancellation email failed:', err.message);
+  }
+};
 
 // Constants for booking rules
 const DAYS_PER_EIGHTH_SHARE = 44; // Days allowed per 1/8 share (12.5%)
@@ -17,6 +101,7 @@ const EXTRA_DAYS_PER_EIGHTH = 10; // Extra paid days allowed per 1/8 share
 const EXTRA_DAY_COST = 100; // Cost per extra day in default currency, placeholder
 const MIN_STAY_BOAT = 1; // Minimum stay for boats in days
 const MIN_STAY_HOME = 2; // Minimum stay for homes in days
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 // Helper function to calculate allowed days based on share percentage
 const calculateAllowedDays = (sharePercentage) => {
@@ -55,11 +140,53 @@ const normalizeDateString = (dateStr) => {
   return DateUtils.normalize(dateStr);
 };
 
+const toUtcDateOnly = (value = new Date()) => {
+  const parsed = value instanceof Date ? value : DateUtils.parseApiDate(value);
+  return DateUtils.parseApiDate(DateUtils.formatUtcDateOnly(parsed));
+};
+
+const resolveOwnerAnniversaryAnchor = (owner, effectiveDate = new Date()) => {
+  const effectiveDateOnly = toUtcDateOnly(effectiveDate);
+  const history = Array.isArray(owner?.anniversaryHistory) ? owner.anniversaryHistory : [];
+  const effectiveEntry = history
+    .filter((entry) => (
+      entry
+      && entry.effectiveFrom
+      && entry.anniversaryDate
+      && toUtcDateOnly(entry.effectiveFrom).getTime() <= effectiveDateOnly.getTime()
+    ))
+    .sort((a, b) => new Date(b.effectiveFrom).getTime() - new Date(a.effectiveFrom).getTime())[0];
+
+  const fallbackAnchor = owner?.since || effectiveDateOnly;
+  const anchorDate = toUtcDateOnly(effectiveEntry?.anniversaryDate || fallbackAnchor);
+
+  return { anchorDate, effectiveDate: effectiveDateOnly };
+};
+
+const getOwnerAllocationWindowForDate = (owner, targetDate = new Date()) => {
+  const targetDateOnly = toUtcDateOnly(targetDate);
+  const { anchorDate } = resolveOwnerAnniversaryAnchor(owner, targetDateOnly);
+  const rolling = DateUtils.getRollingAnniversaryWindows(anchorDate, targetDateOnly);
+  // Booking dates are inclusive; represent the rolling window as inclusive bounds.
+  const inclusiveWindowEnd = new Date(rolling.currentWindow.end.getTime() - DAY_IN_MS);
+
+  return {
+    windowStart: rolling.currentWindow.start,
+    windowEnd: inclusiveWindowEnd,
+    windowStartStr: rolling.currentWindow.startStr,
+    windowEndStr: DateUtils.formatForApi(inclusiveWindowEnd)
+  };
+};
+
 // Helper function to check booking time frame constraints
 const validateBookingTimeframe = async (startDate, endDate, assetId, sharePercentage) => {
-  const now = new Date();
-  const maxFutureDate = new Date();
-  maxFutureDate.setFullYear(now.getFullYear() + MAX_ADVANCE_BOOKING_YEARS);
+  // Use a date-only UTC baseline to avoid timezone-dependent boundary shifts.
+  const today = DateUtils.parseApiDate(DateUtils.formatUtcDateOnly(new Date()));
+  const maxFutureDate = new Date(Date.UTC(
+    today.getUTCFullYear() + MAX_ADVANCE_BOOKING_YEARS,
+    today.getUTCMonth(),
+    today.getUTCDate()
+  ));
   
   // Use DateUtils for consistent date handling (already UTC midnight dates)
   const bookingStartDate = startDate instanceof Date ? startDate : DateUtils.parseApiDate(startDate);
@@ -73,7 +200,7 @@ const validateBookingTimeframe = async (startDate, endDate, assetId, sharePercen
   }
   
   // Cannot book in the past
-  if (bookingStartDate < now) {
+  if (bookingStartDate < today) {
     return {
       isValid: false,
       error: 'Cannot book dates in the past'
@@ -81,7 +208,7 @@ const validateBookingTimeframe = async (startDate, endDate, assetId, sharePercen
   }
   
   // No minimum advance days (real-time booking allowed)
-  const daysInAdvance = Math.ceil((bookingStartDate - now) / (1000 * 60 * 60 * 24));
+  const daysInAdvance = Math.ceil((bookingStartDate - today) / (1000 * 60 * 60 * 24));
   
   // Cannot book more than MAX_ADVANCE_BOOKING_YEARS years in advance
   if (bookingStartDate > maxFutureDate || bookingEndDate > maxFutureDate) {
@@ -144,30 +271,44 @@ const validateBookingTimeframe = async (startDate, endDate, assetId, sharePercen
 // Helper function to count universal active bookings for a user on an asset
 // FEAT-ACTIVE-001: Universal counter that does NOT change based on UI year/window selection
 // Uses weighted counting with startDate-driven exclusion per RULE-HOME-019 / RULE-BOAT-019
-const countUniversalActiveBookings = async (userId, assetId) => {
-  const now = new Date();
-  
-  // Get asset type to determine threshold and weighting rules
-  const asset = await Asset.findById(assetId).select('type');
-  if (!asset) {
-    return { activeBookingsUsed: 0, maxActiveBookings: 0 };
+const getShortTermThresholdDaysByAssetType = (assetType) => (
+  assetType === 'boat' ? 30 : SHORT_TERM_MAX_DAYS
+);
+
+const countUniversalActiveBookings = async (userId, assetId, options = {}) => {
+  const now = options.now || new Date();
+  const perf = options.perf;
+
+  // Reuse already-fetched assetType when available to avoid an extra query.
+  let assetType = options.assetType;
+  if (!assetType) {
+    const assetLookupStartedAt = Date.now();
+    const asset = await Asset.findById(assetId).select('type').lean();
+    perf?.add('dbRead', Date.now() - assetLookupStartedAt);
+    if (!asset) {
+      return 0;
+    }
+    assetType = asset.type;
   }
-  
+
   // Determine exclusion threshold based on asset type
   // RULE-HOME-019: homes exclude if startDate <= now + 60 days
   // RULE-BOAT-019: boats exclude if startDate <= now + 30 days
-  const exclusionThresholdDays = asset.type === 'boat' ? 30 : 60;
+  const exclusionThresholdDays = getShortTermThresholdDaysByAssetType(assetType);
   const exclusionDate = new Date(now.getTime() + exclusionThresholdDays * 24 * 60 * 60 * 1000);
   
   // Query all active bookings (status != 'cancelled', endDate >= now)
+  const bookingsQueryStartedAt = Date.now();
   const bookings = await Booking.find({
     user: userId,
     asset: assetId,
     status: { $ne: 'cancelled' },
     endDate: { $gte: now }
-  });
+  }).select('startDate endDate').lean();
+  perf?.add('dbRead', Date.now() - bookingsQueryStartedAt);
   
   // Apply weighting and exclusion
+  const computeStartedAt = Date.now();
   let weightedCount = 0;
   
   for (const booking of bookings) {
@@ -182,7 +323,7 @@ const countUniversalActiveBookings = async (userId, assetId) => {
     
     // RULE-HOME-011 / RULE-BOAT-011: Weighting by stay length
     let weight = 0;
-    if (asset.type === 'boat') {
+    if (assetType === 'boat') {
       // Boats: 1-7 days => 1, 8-14 days => 2
       if (durationDays >= 1 && durationDays <= 7) {
         weight = 1;
@@ -200,6 +341,7 @@ const countUniversalActiveBookings = async (userId, assetId) => {
     
     weightedCount += weight;
   }
+  perf?.add('compute', Date.now() - computeStartedAt);
   
   return weightedCount;
 };
@@ -207,38 +349,56 @@ const countUniversalActiveBookings = async (userId, assetId) => {
 // Helper function to count active bookings for a user on an asset within a specific year
 // DEPRECATED: Use countUniversalActiveBookings() for new features
 // Kept for backward compatibility with existing code that relies on year-scoped counting
-const countActiveBookings = async (userId, assetId, year = null) => {
-  const now = new Date();
+const countActiveBookings = async (userId, assetId, year = null, options = {}) => {
+  const now = options.now || new Date();
   const targetYear = year || now.getFullYear();
+  const perf = options.perf;
+
+  let assetType = options.assetType;
+  if (!assetType) {
+    const assetLookupStartedAt = Date.now();
+    const asset = await Asset.findById(assetId).select('type').lean();
+    perf?.add('dbRead', Date.now() - assetLookupStartedAt);
+    assetType = asset?.type;
+  }
   
-  // Get yearly allocation windows for the target year
-  const windows = computeYearlyAllocationWindows(targetYear);
-  const yearWindow = {
-    windowStart: windows.currentYear.start,
-    windowEnd: windows.currentYear.end
-  };
+  const hasCustomWindow = options.windowStart instanceof Date && options.windowEnd instanceof Date;
+  const windows = hasCustomWindow ? null : computeYearlyAllocationWindows(targetYear);
+  const effectiveWindow = hasCustomWindow
+    ? {
+      windowStart: options.windowStart,
+      windowEnd: options.windowEnd
+    }
+    : {
+      windowStart: windows.currentYear.start,
+      windowEnd: windows.currentYear.end
+    };
   
+  const bookingsQueryStartedAt = Date.now();
   const bookings = await Booking.find({
     user: userId,
     asset: assetId,
     status: { $ne: 'cancelled' },
     endDate: { $gte: now }, // Only future bookings
     startDate: { 
-      $gte: yearWindow.windowStart, // Start within the year
-      $lte: yearWindow.windowEnd 
+      $gte: effectiveWindow.windowStart,
+      $lte: effectiveWindow.windowEnd 
     }
-  });
-  
-  // Filter out bookings that are currently in the short-term window
-  let activeBookingsCount = 0;
-  for (const booking of bookings) {
-    const isInShortTermWindow = await isBookingInShortTermWindow(assetId, booking.startDate, booking.endDate);
-    if (!isInShortTermWindow) {
-      activeBookingsCount++;
-    }
-  }
-  
-  return activeBookingsCount;
+  }).select('startDate endDate').lean();
+  perf?.add('dbRead', Date.now() - bookingsQueryStartedAt);
+
+  const shortTermMaxDays = typeof options.shortTermMaxDays === 'number'
+    ? options.shortTermMaxDays
+    : getShortTermThresholdDaysByAssetType(assetType);
+
+  const computeStartedAt = Date.now();
+  const count = bookings.reduce((count, booking) => (
+    isBookingInShortTermWindow(assetId, booking.startDate, booking.endDate, { now, shortTermMaxDays })
+      ? count
+      : count + 1
+  ), 0);
+  perf?.add('compute', Date.now() - computeStartedAt);
+  return count;
 };
 
 // Helper function to check for booking overlaps
@@ -396,26 +556,14 @@ const isShortTermBooking = async (assetId, startDate) => {
 
 // Helper function to check if a booking is currently in the short-term window
 // This checks if the ENTIRE booking duration falls within the short-term window
-const isBookingInShortTermWindow = async (assetId, bookingStartDate, bookingEndDate) => {
-  const now = new Date();
+const isBookingInShortTermWindow = (_assetId, bookingStartDate, bookingEndDate, options = {}) => {
+  const now = options.now || new Date();
   const daysToStart = Math.ceil((bookingStartDate - now) / (1000 * 60 * 60 * 24));
   const daysToEnd = Math.ceil((bookingEndDate - now) / (1000 * 60 * 60 * 24));
 
-  // Determine short-term threshold by asset type
-  let shortTermMaxDays = SHORT_TERM_MAX_DAYS; // default (homes)
-  try {
-    if (assetId) {
-      const asset = await Asset.findById(assetId).select('type');
-      if (asset && asset.type === 'boat') {
-        shortTermMaxDays = 30;
-      } else {
-        shortTermMaxDays = SHORT_TERM_MAX_DAYS; // homes: 60 days
-      }
-    }
-  } catch (_) {
-    // If asset lookup fails, fall back to default thresholds
-    shortTermMaxDays = SHORT_TERM_MAX_DAYS;
-  }
+  const shortTermMaxDays = typeof options.shortTermMaxDays === 'number'
+    ? options.shortTermMaxDays
+    : getShortTermThresholdDaysByAssetType(options.assetType);
 
   // Booking is in short-term window if BOTH start and end dates are within the threshold
   return daysToStart <= shortTermMaxDays && daysToEnd <= shortTermMaxDays;
@@ -584,19 +732,12 @@ exports.getBookings = async (req, res) => {
     
     const bookings = await Booking.find(query)
       .populate('user', 'name lastName email')
-      .populate('asset', 'name location type description capacity amenities photos');
+      .populate('asset', 'name location locationAddress propertyManager type description capacity amenities photos');
     
     res.status(200).json({
       success: true,
       count: bookings.length,
-      data: bookings.map(booking => ({
-        ...booking.toObject(),
-        startDate: DateUtils.formatForApi(booking.startDate),
-        endDate: DateUtils.formatForApi(booking.endDate),
-        createdAt: DateUtils.formatForApi(booking.createdAt),
-        cancelledAt: booking.cancelledAt ? DateUtils.formatForApi(booking.cancelledAt) : null,
-        reassignedAt: booking.reassignedAt ? DateUtils.formatForApi(booking.reassignedAt) : null
-      }))
+      data: bookings.map(formatBookingForResponse)
     });
   } catch (err) {
     res.status(500).json({
@@ -613,7 +754,7 @@ exports.getBooking = async (req, res) => {
   try {
     const booking = await Booking.findById(req.params.id)
       .populate('user', 'name lastName email')
-      .populate('asset', 'name location type description capacity amenities photos');
+      .populate('asset', 'name location locationAddress propertyManager type description capacity amenities photos');
     
     if (!booking) {
       return res.status(404).json({
@@ -624,7 +765,7 @@ exports.getBooking = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: booking
+      data: formatBookingForResponse(booking)
     });
   } catch (err) {
     res.status(500).json({
@@ -646,6 +787,7 @@ exports.createBooking = async (req, res) => {
     
     // Get user ID from the authenticated user or admin override
     const userId = req.body.userId && isAdmin ? req.body.userId : req.user.id;
+    const isAdminBookingForAnotherUser = isAdmin && String(userId) !== String(req.user.id);
     const { assetId, startDate: startDateStr, endDate: endDateStr, notes, useExtraDays } = req.body;
     
     // DEBUG: Log incoming request data
@@ -863,8 +1005,44 @@ exports.createBooking = async (req, res) => {
     
     // Calculate max active bookings allowed based on share percentage
     const maxActiveBookings = calculateMaxActiveBookings(sharePercentage);
-    
-    // For very short-term bookings (less than 7 days notice), always allow using extra days
+
+    // Resolve allocation window from anniversary anchor (source of truth).
+    // Extra days are only consumed for overflow beyond standard allocation.
+    const relevantWindow = getOwnerAllocationWindowForDate(userOwnership, startDate);
+    const relevantWindowLabel = `${relevantWindow.windowStartStr} to ${relevantWindow.windowEndStr}`;
+
+    const existingBookingsInWindow = await Booking.find({
+      user: userId,
+      asset: assetId,
+      $or: [
+        { status: { $ne: 'cancelled' } },
+        { status: 'cancelled', shortTermCancelled: true }
+      ],
+      startDate: { $gte: relevantWindow.windowStart },
+      endDate: { $lte: relevantWindow.windowEnd }
+    });
+
+    const standardDaysBookedInWindow = existingBookingsInWindow
+      .filter(booking => !booking.isExtraDays)
+      .reduce((total, booking) => {
+        if (booking.status === 'cancelled' && booking.shortTermCancelled) {
+          return total + (booking.remainingPenaltyDays || calculateBookingDays(booking.startDate, booking.endDate));
+        }
+        return total + calculateBookingDays(booking.startDate, booking.endDate);
+      }, 0);
+
+    const extraDaysUsedInWindow = existingBookingsInWindow
+      .filter(booking => booking.isExtraDays)
+      .reduce((total, booking) => {
+        if (typeof booking.extraDayCount === 'number' && booking.extraDayCount > 0) {
+          return total + booking.extraDayCount;
+        }
+        // Backward-compat for legacy rows where extraDayCount was not populated correctly.
+        return total + calculateBookingDays(booking.startDate, booking.endDate);
+      }, 0);
+
+    // For very short-term bookings (<=7 days), only the overflow beyond standard allocation
+    // should be marked as extra days.
     let isExtraDays = false;
     let extraDayCount = 0;
     let extraDayCost = 0;
@@ -872,46 +1050,37 @@ exports.createBooking = async (req, res) => {
     if (isVeryShortTerm) {
       // Calculate extra allowed days
       const extraAllowedDays = calculateExtraAllowedDays(sharePercentage);
-      
-      // Calculate extra days used so far
-      const currentYear = new Date().getFullYear();
-      const yearStart = new Date(`${currentYear}-01-01`);
-      const yearEnd = new Date(`${currentYear}-12-31`);
-      
-      const extraDaysBookings = await Booking.find({
-        user: userId,
-        asset: assetId,
-        isExtraDays: true,
-        startDate: { $gte: yearStart },
-        endDate: { $lte: yearEnd }
-      });
-      
-      const extraDaysUsed = extraDaysBookings.reduce((total, booking) => {
-        return total + (booking.extraDayCount || 0);
-      }, 0);
-      
+
+      const standardDaysRemaining = Math.max(0, allowedDaysPerYear - standardDaysBookedInWindow);
+      const extraDaysNeeded = Math.max(0, bookingDays - standardDaysRemaining);
+
       // Check if user has enough extra days available
-      if (extraDaysUsed + bookingDays > extraAllowedDays) {
+      if (extraDaysUsedInWindow + extraDaysNeeded > extraAllowedDays) {
         return res.status(400).json({
           success: false,
-          error: `This very short-term booking would exceed your extra days allocation. You have used ${extraDaysUsed} of your ${extraAllowedDays} extra days for the year.`,
-          extraDaysNeeded: bookingDays,
-          extraDaysAvailable: extraAllowedDays - extraDaysUsed,
-          costEstimate: bookingDays * EXTRA_DAY_COST
+          error: `This very short-term booking would exceed your extra days allocation. You have used ${extraDaysUsedInWindow} of your ${extraAllowedDays} extra days in this allocation window.`,
+          extraDaysNeeded,
+          extraDaysAvailable: extraAllowedDays - extraDaysUsedInWindow,
+          costEstimate: extraDaysNeeded * EXTRA_DAY_COST
         });
       }
       
-      // Set extra days for very short-term bookings
-      isExtraDays = true;
-      extraDayCount = bookingDays;
-      extraDayCost = bookingDays * EXTRA_DAY_COST;
+      // Extra days only for the overflow portion.
+      isExtraDays = extraDaysNeeded > 0;
+      extraDayCount = extraDaysNeeded;
+      extraDayCost = extraDaysNeeded * EXTRA_DAY_COST;
     }
     
     // Only check booking limits if not a short-term booking
     if (!isShortTerm) {
-      // Count user's current active bookings for this asset within the booking year
+      // Count user's current active bookings for this asset in the effective anniversary window
       const bookingYear = startDate.getFullYear();
-      const currentActiveBookings = await countActiveBookings(userId, assetId, bookingYear);
+      const currentActiveBookings = await countActiveBookings(userId, assetId, bookingYear, {
+        windowStart: relevantWindow.windowStart,
+        windowEnd: relevantWindow.windowEnd,
+        assetType: asset.type,
+        shortTermMaxDays: getShortTermThresholdDaysByAssetType(asset.type)
+      });
       
       // Check if user has reached their maximum number of active bookings (BUSINESS RULE - can be overridden)
       if (currentActiveBookings >= maxActiveBookings) {
@@ -943,30 +1112,8 @@ exports.createBooking = async (req, res) => {
         }
       }
       
-      // Check user's existing bookings within the relevant year window
-      // Use the bookingYear already determined above
-      const windows = computeYearlyAllocationWindows(bookingYear);
-      const relevantWindow = {
-        windowStart: windows.currentYear.start,
-        windowEnd: windows.currentYear.end
-      };
-      
-      const existingBookings = await Booking.find({
-        user: userId,
-        asset: assetId,
-        $or: [
-          { status: { $ne: 'cancelled' } },
-          { status: 'cancelled', shortTermCancelled: true }
-        ],
-        startDate: { $gte: relevantWindow.windowStart },
-        endDate: { $lte: relevantWindow.windowEnd }
-      });
-      
-      // Calculate days already booked in allocation window
-      const daysBooked = existingBookings.reduce((total, b) => {
-        const days = calculateBookingDays(b.startDate, b.endDate);
-        return total + days;
-      }, 0);
+      // Use precomputed allocation usage for this booking's anniversary window.
+      const daysBooked = standardDaysBookedInWindow;
       
       // Compute number of days of this booking that fall within the allocation window
       let daysInAllocationWindow = 0;
@@ -980,12 +1127,7 @@ exports.createBooking = async (req, res) => {
       const extraAllowedDays = calculateExtraAllowedDays(sharePercentage);
       
       // Calculate used extra days
-      const extraDaysUsed = existingBookings
-        .filter(booking => booking.isExtraDays)
-        .reduce((total, booking) => {
-          const days = calculateBookingDays(booking.startDate, booking.endDate);
-          return total + days;
-        }, 0);
+      const extraDaysUsed = extraDaysUsedInWindow;
       
       // Check if the new booking would exceed the user's standard allocation (BUSINESS RULE - can be overridden)
       if (daysBooked + daysInAllocationWindow > allowedDaysPerYear) {
@@ -997,7 +1139,7 @@ exports.createBooking = async (req, res) => {
           
           // Check if user has enough extra days available
           if (extraDaysUsed + extraDaysNeeded > extraAllowedDays) {
-            const extraDaysError = `This booking would exceed your extra days allocation. You have used ${extraDaysUsed} of your ${extraAllowedDays} extra days for the year.`;
+            const extraDaysError = `This booking would exceed your extra days allocation. You have used ${extraDaysUsed} of your ${extraAllowedDays} extra days in the allocation window ${relevantWindowLabel}.`;
             if (isAdmin) {
               violations.push(extraDaysError);
             } else {
@@ -1113,12 +1255,19 @@ exports.createBooking = async (req, res) => {
           
           // Create all the bookings
           const createdBookings = await Booking.insertMany(bookingsToCreate);
+
+          await trySendBookingConfirmationEmail({
+            user,
+            asset,
+            bookings: createdBookings,
+            createdByAdmin: isAdminBookingForAnotherUser
+          });
           
           // Include extra day information in response
           return res.status(201).json({
             success: true,
             data: {
-              bookings: createdBookings,
+              bookings: createdBookings.map(formatBookingForResponse),
               bookingCount: createdBookings.length,
               isShortTerm,
               isVeryShortTerm,
@@ -1131,7 +1280,7 @@ exports.createBooking = async (req, res) => {
           });
         } else {
           // User does not want to use extra days (BUSINESS RULE - can be overridden)
-          const allocationError = `Booking exceeds your allocation. You have used ${daysBooked} days of your ${allowedDaysPerYear} day allocation for ${bookingYear}.`;
+          const allocationError = `Booking exceeds your allocation. You have used ${daysBooked} of ${allowedDaysPerYear} days in the allocation window ${relevantWindowLabel}.`;
           if (isAdmin) {
             violations.push(allocationError);
           } else {
@@ -1241,6 +1390,7 @@ exports.createBooking = async (req, res) => {
     } else {
       // Split into multiple bookings of STANDARD_BOOKING_LENGTH days
       let currentStart = new Date(startDate);
+      let remainingExtraDays = extraDayCount;
       
       while (currentStart < endDate) {
         let currentEnd = new Date(currentStart);
@@ -1273,10 +1423,10 @@ exports.createBooking = async (req, res) => {
         // Calculate days in this segment
         const segmentDays = calculateBookingDays(currentStart, currentEnd);
         
-        // For very short-term bookings, all segments use extra days
-        let segmentIsExtraDays = isExtraDays;
-        let segmentExtraDayCount = isVeryShortTerm ? segmentDays : 0;
-        let segmentExtraDayCost = isVeryShortTerm ? segmentDays * EXTRA_DAY_COST : 0;
+        // Apply extra days only to the overflow portion of this booking.
+        const segmentExtraDayCount = Math.max(0, Math.min(segmentDays, remainingExtraDays));
+        const segmentIsExtraDays = segmentExtraDayCount > 0;
+        const segmentExtraDayCost = segmentExtraDayCount * EXTRA_DAY_COST;
         
         bookingsToCreate.push({
           user: userId,
@@ -1300,6 +1450,8 @@ exports.createBooking = async (req, res) => {
           overrideNote: overrideNote || null
         });
         
+        remainingExtraDays -= segmentExtraDayCount;
+
         // Move to next period
         currentStart.setDate(currentStart.getDate() + STANDARD_BOOKING_LENGTH);
       }
@@ -1307,6 +1459,13 @@ exports.createBooking = async (req, res) => {
     
     // Create all the bookings
     const createdBookings = await Booking.insertMany(bookingsToCreate);
+
+    await trySendBookingConfirmationEmail({
+      user,
+      asset,
+      bookings: createdBookings,
+      createdByAdmin: isAdminBookingForAnotherUser
+    });
     
     // Log special date bookings for debugging
     const specialDateBookings = createdBookings.filter(b => b.specialDateType);
@@ -1325,7 +1484,7 @@ exports.createBooking = async (req, res) => {
     res.status(201).json({
       success: true,
       data: {
-        bookings: createdBookings,
+        bookings: createdBookings.map(formatBookingForResponse),
         bookingCount: createdBookings.length,
         isShortTerm,
         isVeryShortTerm,
@@ -1422,7 +1581,7 @@ exports.updateBooking = async (req, res) => {
           return res.status(403).json({ success: false, error: 'User no longer owns shares in this asset' });
         }
 
-        // Allowed and window by year
+        // Allowed days and anniversary-scoped allocation window
         const sharePercentage = userOwnership.sharePercentage;
         // Enforce dynamic maximum consecutive stay based on ownership share
         const maxConsecutiveDays = calculateMaxConsecutiveDays(sharePercentage);
@@ -1434,13 +1593,8 @@ exports.updateBooking = async (req, res) => {
         }
         const allowedDaysPerYear = calculateAllowedDays(sharePercentage);
         
-        // Determine which year the booking falls into
-        const bookingYear = startDate.getFullYear();
-        const windows = computeYearlyAllocationWindows(bookingYear);
-        const relevantWindow = {
-          windowStart: windows.currentYear.start,
-          windowEnd: windows.currentYear.end
-        };
+        const relevantWindow = getOwnerAllocationWindowForDate(userOwnership, startDate);
+        const relevantWindowLabel = `${relevantWindow.windowStartStr} to ${relevantWindow.windowEndStr}`;
 
         // Existing bookings in window excluding this one
         const existingBookings = await Booking.find({
@@ -1467,21 +1621,42 @@ exports.updateBooking = async (req, res) => {
         if (daysBooked + additionalOverlap > allowedDaysPerYear) {
           return res.status(400).json({
             success: false,
-            error: `Booking update exceeds your annual allocation. You have used ${daysBooked} days of your ${allowedDaysPerYear} day allocation for ${bookingYear}.`
+            error: `Booking update exceeds your allocation window. You have used ${daysBooked} of ${allowedDaysPerYear} days in ${relevantWindowLabel}.`
           });
         }
       }
     }
-    
+
+    const wasCancelled = booking.status === 'cancelled';
+    const updatePayload = { ...req.body };
+    if (!wasCancelled && updatePayload.status === 'cancelled' && !updatePayload.cancelledAt) {
+      updatePayload.cancelledAt = new Date();
+    }
+
     // Update the booking
-    booking = await Booking.findByIdAndUpdate(req.params.id, req.body, {
+    booking = await Booking.findByIdAndUpdate(req.params.id, updatePayload, {
       new: true,
       runValidators: true
     });
+
+    if (!wasCancelled && booking.status === 'cancelled') {
+      const [bookingUser, bookingAsset] = await Promise.all([
+        User.findById(booking.user).select('name lastName email'),
+        Asset.findById(booking.asset).select('name')
+      ]);
+
+      const cancelledByAdmin = req.user.role === 'admin' && String(booking.user) !== String(req.user.id);
+      await trySendBookingCancellationEmail({
+        user: bookingUser,
+        asset: bookingAsset,
+        booking,
+        cancelledByAdmin
+      });
+    }
     
     res.status(200).json({
       success: true,
-      data: booking
+      data: formatBookingForResponse(booking)
     });
   } catch (err) {
     res.status(500).json({
@@ -1496,7 +1671,9 @@ exports.updateBooking = async (req, res) => {
 // @access  Private
 exports.deleteBooking = async (req, res) => {
   try {
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findById(req.params.id)
+      .populate('user', 'name lastName email')
+      .populate('asset', 'name');
     
     if (!booking) {
       return res.status(404).json({
@@ -1512,6 +1689,8 @@ exports.deleteBooking = async (req, res) => {
     // days are immediately refunded (credited back). Partial overlaps yield partial refunds.
     // Policy decisions: PD-CANCEL-001 through PD-CANCEL-004 (see PRD.md)
     // Domain rules: RULE-HOME-021 (homes) and RULE-BOAT-021 (boats)
+    const cancelledByAdmin = req.user.role === 'admin' && String(booking.user?._id || booking.user) !== String(req.user.id);
+
     if (booking.isShortTerm) {
       // Calculate original booking days (inclusive-inclusive date range)
       const originalDays = Math.ceil((booking.endDate - booking.startDate) / (1000 * 60 * 60 * 24)) + 1;
@@ -1529,30 +1708,149 @@ exports.deleteBooking = async (req, res) => {
       booking.remainingPenaltyDays = originalDays;  // Days still counting as used (starts at full duration)
       
       await booking.save();
+      await trySendBookingCancellationEmail({
+        user: booking.user,
+        asset: booking.asset,
+        booking,
+        cancelledByAdmin
+      });
       
       // Optional: Notify other owners that these dates are available for short-term booking
       
       return res.status(200).json({
         success: true,
         message: 'Short-term booking cancelled. These days will count against your allocation unless you or another owner books these dates.',
-        data: booking
+        data: formatBookingForResponse(booking)
       });
     } else {
       // For long-term bookings, just mark as cancelled and don't count against allocation
       booking.status = 'cancelled';
       booking.cancelledAt = new Date();
       await booking.save();
+      await trySendBookingCancellationEmail({
+        user: booking.user,
+        asset: booking.asset,
+        booking,
+        cancelledByAdmin
+      });
       
       return res.status(200).json({
         success: true,
         message: 'Booking cancelled successfully.',
-        data: booking
+        data: formatBookingForResponse(booking)
       });
     }
   } catch (err) {
     res.status(500).json({
       success: false,
       error: 'Server Error'
+    });
+  }
+};
+
+// @desc    Get in-app alerts for recently freed booking dates
+// @route   GET /api/bookings/alerts/freed-dates
+// @access  Private
+exports.getFreedDateAlerts = async (req, res) => {
+  try {
+    const requesterId = req.user?._id || req.user?.id;
+    if (!requesterId) {
+      return res.status(401).json({
+        success: false,
+        error: 'Not authorized to access this resource'
+      });
+    }
+
+    const requestedLimit = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 20;
+    const candidateLimit = Math.max(limit * 10, 100);
+
+    const now = new Date();
+    const alertsCutoff = new Date(now.getTime() - 72 * 60 * 60 * 1000);
+    const todayUtc = DateUtils.toDate(DateUtils.normalize(now));
+
+    const ownedAssets = await Asset.find({ 'owners.user': requesterId })
+      .select('_id name type location')
+      .lean();
+
+    if (!ownedAssets.length) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: []
+      });
+    }
+
+    const ownedAssetIds = ownedAssets.map((asset) => asset._id);
+    const ownedAssetMap = new Map(ownedAssets.map((asset) => [String(asset._id), asset]));
+
+    const cancelledCandidates = await Booking.find({
+      status: 'cancelled',
+      asset: { $in: ownedAssetIds },
+      user: { $ne: requesterId },
+      cancelledAt: { $gte: alertsCutoff },
+      endDate: { $gte: todayUtc }
+    })
+      .select('_id user asset startDate endDate cancelledAt')
+      .populate('user', 'name lastName')
+      .populate('asset', '_id name type location')
+      .sort({ cancelledAt: -1 })
+      .limit(candidateLimit)
+      .lean();
+
+    const alerts = [];
+    for (const cancelledBooking of cancelledCandidates) {
+      if (!cancelledBooking?.asset || !cancelledBooking?.cancelledAt) continue;
+
+      const assetId = cancelledBooking.asset._id || cancelledBooking.asset;
+      const hasOverlap = await Booking.findOne({
+        _id: { $ne: cancelledBooking._id },
+        asset: assetId,
+        status: { $ne: 'cancelled' },
+        startDate: { $lte: cancelledBooking.endDate },
+        endDate: { $gte: cancelledBooking.startDate }
+      })
+        .select('_id')
+        .lean();
+
+      // Product rule: hide alert as soon as any overlap gets rebooked.
+      if (hasOverlap) continue;
+
+      const assetFromOwnerMap = ownedAssetMap.get(String(assetId));
+      const asset = assetFromOwnerMap || cancelledBooking.asset;
+      const cancelledBy = cancelledBooking.user || {};
+
+      alerts.push({
+        alertId: `booking_${cancelledBooking._id}`,
+        bookingId: cancelledBooking._id,
+        asset: {
+          _id: asset._id || assetId,
+          name: asset.name || '',
+          type: asset.type || '',
+          location: asset.location || ''
+        },
+        cancelledBy: {
+          _id: cancelledBy._id || null,
+          name: cancelledBy.name || '',
+          lastName: cancelledBy.lastName || ''
+        },
+        startDate: DateUtils.formatForApi(cancelledBooking.startDate),
+        endDate: DateUtils.formatForApi(cancelledBooking.endDate),
+        cancelledAt: new Date(cancelledBooking.cancelledAt).toISOString()
+      });
+
+      if (alerts.length >= limit) break;
+    }
+
+    return res.status(200).json({
+      success: true,
+      count: alerts.length,
+      data: alerts
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Server Error'
     });
   }
 };
@@ -1564,6 +1862,12 @@ exports.getAvailability = async (req, res) => {
   try {
     const { assetId } = req.params;
     const { startDate, endDate } = req.query;
+    const measureDb = async (operation) => {
+      const startedAt = Date.now();
+      const result = await operation();
+      req.perf?.add('dbRead', Date.now() - startedAt);
+      return result;
+    };
     
     // Default to current month if dates not provided
     let start, end;
@@ -1595,7 +1899,7 @@ exports.getAvailability = async (req, res) => {
     end.setDate(0); // Last day of month
     
     // Find all confirmed bookings for this asset in the date range
-    const bookings = await Booking.find({
+    const bookings = await measureDb(() => Booking.find({
       asset: assetId,
       status: 'confirmed',
       $or: [
@@ -1606,11 +1910,11 @@ exports.getAvailability = async (req, res) => {
         // Bookings that span the entire range
         { startDate: { $lte: start }, endDate: { $gte: end } }
       ]
-    }).select('startDate endDate user');
+    }).select('startDate endDate user').lean());
 
     // Find special dates for this asset in the date range
     // Get both universal special dates and asset-specific ones
-    const specialDates = await SpecialDate.find({
+    const specialDates = await measureDb(() => SpecialDate.find({
       $and: [
         {
           $or: [
@@ -1619,10 +1923,11 @@ exports.getAvailability = async (req, res) => {
           ]
         }
       ]
-    });
+    }).select('startDate endDate type repeatYearly').lean());
     
     // Prepare calendar data
     const calendar = {};
+    const computeStartedAt = Date.now();
     
     // Generate dates in the range using consistent date handling
     const currentDate = new Date(start);
@@ -1653,14 +1958,14 @@ exports.getAvailability = async (req, res) => {
 
     // FEAT-ADMIN-BLOCK-001: Mark blocked dates as unavailable
     const BlockedDate = require('../models/BlockedDate');
-    const blockedDates = await BlockedDate.find({
+    const blockedDates = await measureDb(() => BlockedDate.find({
       asset: assetId,
       $or: [
         { startDate: { $gte: start, $lte: end } },
         { endDate: { $gte: start, $lte: end } },
         { startDate: { $lte: start }, endDate: { $gte: end } }
       ]
-    }).select('startDate endDate blockType reason');
+    }).select('startDate endDate blockType reason').lean());
     
     blockedDates.forEach(block => {
       const blockStart = DateUtils.parseApiDate(block.startDate);
@@ -1760,8 +2065,10 @@ exports.getAvailability = async (req, res) => {
         }
       }
     });
+    req.perf?.add('compute', Date.now() - computeStartedAt);
     
-    res.status(200).json({
+    const responseComputeStartedAt = Date.now();
+    const responsePayload = {
       success: true,
       data: {
         calendar,
@@ -1770,7 +2077,9 @@ exports.getAvailability = async (req, res) => {
           type2: specialDatesType2
         }
       }
-    });
+    };
+    req.perf?.add('compute', Date.now() - responseComputeStartedAt);
+    res.status(200).json(responsePayload);
   } catch (err) {
     console.error('Error in getAvailability:', err);
     res.status(500).json({
@@ -1786,9 +2095,15 @@ exports.getAvailability = async (req, res) => {
 exports.getUserAllocation = async (req, res) => {
   try {
     const { userId, assetId } = req.params;
+    const measureDb = async (operation) => {
+      const startedAt = Date.now();
+      const result = await operation();
+      req.perf?.add('dbRead', Date.now() - startedAt);
+      return result;
+    };
     
     // Get user's ownership percentage
-    const asset = await Asset.findById(assetId);
+    const asset = await measureDb(() => Asset.findById(assetId).select('type owners').lean());
     if (!asset) {
       return res.status(404).json({
         success: false,
@@ -1811,6 +2126,8 @@ exports.getUserAllocation = async (req, res) => {
     const allowedDaysPerYear = calculateAllowedDays(sharePercentage);
     const extraAllowedDays = calculateExtraAllowedDays(sharePercentage);
     const maxActiveBookings = calculateMaxActiveBookings(sharePercentage);
+    const assetType = asset.type;
+    const shortTermMaxDays = getShortTermThresholdDaysByAssetType(assetType);
 
     // Anniversary-based rolling allocation windows (current + next), anchored per user+asset.
     // Forward-only changes: pick the most recent anniversaryHistory entry effective on/ before "today".
@@ -1848,9 +2165,39 @@ exports.getUserAllocation = async (req, res) => {
         used: 0
       }
     };
+
+    const allocationBookingFields = [
+      '_id',
+      'startDate',
+      'endDate',
+      'status',
+      'shortTermCancelled',
+      'remainingPenaltyDays',
+      'originalDays',
+      'rebookedDays',
+      'specialDateType',
+      'isShortTerm',
+      'isExtraDays',
+      'extraDayCount',
+      'cancelledAt',
+      'reassignedTo',
+      'reassignedAt'
+    ].join(' ');
+
+    const getPenaltyDays = (booking) => {
+      if (!(booking.status === 'cancelled' && booking.shortTermCancelled)) {
+        return 0;
+      }
+      if (typeof booking.remainingPenaltyDays === 'number') {
+        return booking.remainingPenaltyDays;
+      }
+      const originalDays = booking.originalDays || calculateBookingDays(booking.startDate, booking.endDate);
+      const rebookedDays = booking.rebookedDays || 0;
+      return Math.max(0, originalDays - rebookedDays);
+    };
     
     // Get bookings for current rolling window
-    const currentYearBookings = await Booking.find({
+    const currentYearBookings = await measureDb(() => Booking.find({
       user: userId,
       asset: assetId,
       $or: [
@@ -1860,11 +2207,11 @@ exports.getUserAllocation = async (req, res) => {
       startDate: { $gte: currentWindow.windowStart },
       // Rolling windows are treated as half-open: [start, end)
       endDate: { $lt: currentWindow.windowEnd }
-    });
+    }).select(allocationBookingFields).lean());
     
     
     // Get bookings for next rolling window
-    const nextYearBookings = await Booking.find({
+    const nextYearBookings = await measureDb(() => Booking.find({
       user: userId,
       asset: assetId,
       $or: [
@@ -1873,12 +2220,7 @@ exports.getUserAllocation = async (req, res) => {
       ],
       startDate: { $gte: nextWindow.windowStart },
       endDate: { $lt: nextWindow.windowEnd }
-    });
-    
-    // Get universal special dates
-    const specialDates = await SpecialDate.find({
-      asset: null
-    });
+    }).select(allocationBookingFields).lean());
     
     // Calculate special date usage for current year
     const calculateSpecialDateUsage = (bookings) => {
@@ -1909,7 +2251,7 @@ exports.getUserAllocation = async (req, res) => {
     specialDateAllocation.type2.used = Math.max(currentYearSpecialDateUsage.type2, nextYearSpecialDateUsage.type2);
     
     // Get active bookings (including future years, excluding cancelled except short-term cancelled ones)
-    const activeBookings = await Booking.find({
+    const activeBookings = await measureDb(() => Booking.find({
       user: userId,
       asset: assetId,
       $or: [
@@ -1917,7 +2259,9 @@ exports.getUserAllocation = async (req, res) => {
         { status: 'cancelled', shortTermCancelled: true } // Include short-term cancelled bookings that still count
       ],
       endDate: { $gte: now }
-    }).sort({ startDate: 1 });
+    }).sort({ startDate: 1 }).select(allocationBookingFields).lean());
+    
+    const allocationComputeStartedAt = Date.now();
     
     // Calculate days booked from standard allocation for current year
     const currentYearRegularDaysBooked = currentYearBookings
@@ -1925,7 +2269,7 @@ exports.getUserAllocation = async (req, res) => {
       .reduce((total, booking) => {
         // For short-term cancelled bookings, use remaining penalty days
         if (booking.status === 'cancelled' && booking.shortTermCancelled) {
-          return total + (booking.remainingPenaltyDays || 0);
+          return total + getPenaltyDays(booking);
         }
         // For active bookings, use full booking days
         const days = calculateBookingDays(booking.startDate, booking.endDate);
@@ -1938,7 +2282,7 @@ exports.getUserAllocation = async (req, res) => {
       .reduce((total, booking) => {
         // For short-term cancelled bookings, use remaining penalty days
         if (booking.status === 'cancelled' && booking.shortTermCancelled) {
-          return total + (booking.remainingPenaltyDays || 0);
+          return total + getPenaltyDays(booking);
         }
         // For active bookings, use full booking days
         const days = calculateBookingDays(booking.startDate, booking.endDate);
@@ -1949,25 +2293,46 @@ exports.getUserAllocation = async (req, res) => {
     const currentYearExtraDaysUsed = currentYearBookings
       .filter(booking => booking.isExtraDays)
       .reduce((total, booking) => {
-        const days = calculateBookingDays(booking.startDate, booking.endDate);
-        return total + days;
+        if (typeof booking.extraDayCount === 'number' && booking.extraDayCount > 0) {
+          return total + booking.extraDayCount;
+        }
+        // Backward-compat for legacy rows where extraDayCount may be missing.
+        return total + calculateBookingDays(booking.startDate, booking.endDate);
       }, 0);
     
     // Calculate extra days used for next year
     const nextYearExtraDaysUsed = nextYearBookings
       .filter(booking => booking.isExtraDays)
       .reduce((total, booking) => {
-        const days = calculateBookingDays(booking.startDate, booking.endDate);
-        return total + days;
+        if (typeof booking.extraDayCount === 'number' && booking.extraDayCount > 0) {
+          return total + booking.extraDayCount;
+        }
+        // Backward-compat for legacy rows where extraDayCount may be missing.
+        return total + calculateBookingDays(booking.startDate, booking.endDate);
       }, 0);
+    req.perf?.add('compute', Date.now() - allocationComputeStartedAt);
     
     // FEAT-ACTIVE-001: Universal active bookings counter (weighted, threshold-excluded)
-    const activeBookingsUsed = await countUniversalActiveBookings(userId, assetId);
+    const activeBookingsUsed = await countUniversalActiveBookings(userId, assetId, {
+      now,
+      assetType,
+      perf: req.perf
+    });
     const activeBookingsRemaining = Math.max(0, maxActiveBookings - activeBookingsUsed);
     
     // Count active bookings per year (LEGACY - kept for backward compatibility)
-    const currentYearActiveBookings = await countActiveBookings(userId, assetId, new Date().getFullYear());
-    const nextYearActiveBookings = await countActiveBookings(userId, assetId, new Date().getFullYear() + 1);
+    const currentYearActiveBookings = await countActiveBookings(userId, assetId, now.getFullYear(), {
+      now,
+      assetType,
+      shortTermMaxDays,
+      perf: req.perf
+    });
+    const nextYearActiveBookings = await countActiveBookings(userId, assetId, now.getFullYear() + 1, {
+      now,
+      assetType,
+      shortTermMaxDays,
+      perf: req.perf
+    });
     
     // Get the count of short-term cancelled bookings that still count against allocation (per year)
     // Only count future bookings (endDate >= now) since past penalties are already accounted for
@@ -1979,20 +2344,8 @@ exports.getUserAllocation = async (req, res) => {
       booking => booking.status === 'cancelled' && booking.shortTermCancelled && booking.endDate >= now
     ).length;
     
-    // Migrate existing short-term cancelled bookings to have proper tracking fields
-    const allShortTermCancelled = [...currentYearBookings, ...nextYearBookings].filter(
-      booking => booking.status === 'cancelled' && booking.shortTermCancelled && !booking.originalDays
-    );
-    
-    for (const booking of allShortTermCancelled) {
-      const originalDays = Math.ceil((booking.endDate - booking.startDate) / (1000 * 60 * 60 * 24)) + 1;
-      booking.originalDays = originalDays;
-      booking.rebookedDays = booking.rebookedDays || 0;
-      booking.remainingPenaltyDays = originalDays - (booking.rebookedDays || 0);
-      await booking.save();
-    }
-    
-    res.status(200).json({
+    const responseComputeStartedAt = Date.now();
+    const responsePayload = {
       success: true,
       data: {
         sharePercentage,
@@ -2012,10 +2365,10 @@ exports.getUserAllocation = async (req, res) => {
         nextYearShortTermCancelled,
         currentYearShortTermPenaltyDays: currentYearBookings
           .filter(b => b.status === 'cancelled' && b.shortTermCancelled && b.endDate >= now)
-          .reduce((total, b) => total + (b.remainingPenaltyDays || 0), 0),
+          .reduce((total, b) => total + getPenaltyDays(b), 0),
         nextYearShortTermPenaltyDays: nextYearBookings
           .filter(b => b.status === 'cancelled' && b.shortTermCancelled && b.endDate >= now)
-          .reduce((total, b) => total + (b.remainingPenaltyDays || 0), 0),
+          .reduce((total, b) => total + getPenaltyDays(b), 0),
         specialDates: specialDateAllocation,
         // Explicit window ranges (date-only) for UIs
         currentWindow: {
@@ -2041,7 +2394,7 @@ exports.getUserAllocation = async (req, res) => {
           // Past penalties are already accounted for in historical allocation windows
           penaltyDays: currentYearBookings
             .filter(b => b.status === 'cancelled' && b.shortTermCancelled && b.endDate >= now)
-            .reduce((total, b) => total + (b.remainingPenaltyDays || 0), 0),
+            .reduce((total, b) => total + getPenaltyDays(b), 0),
           penaltyBookings: currentYearBookings
             .filter(b => b.status === 'cancelled' && b.shortTermCancelled && b.endDate >= now)
             .map(b => ({
@@ -2050,7 +2403,7 @@ exports.getUserAllocation = async (req, res) => {
               endDate: b.endDate ? b.endDate.toISOString().split('T')[0] : null,
               originalDays: b.originalDays,
               rebookedDays: b.rebookedDays || 0,
-              remainingPenaltyDays: b.remainingPenaltyDays || 0,
+              remainingPenaltyDays: getPenaltyDays(b),
               cancelledAt: b.cancelledAt ? b.cancelledAt.toISOString().split('T')[0] : null,
               reassignedTo: b.reassignedTo || null,
               reassignedAt: b.reassignedAt ? b.reassignedAt.toISOString().split('T')[0] : null
@@ -2061,7 +2414,9 @@ exports.getUserAllocation = async (req, res) => {
             endDate: b.endDate ? b.endDate.toISOString().split('T')[0] : null,
             status: b.status,
             isShortTerm: b.isShortTerm,
+            isExtraDays: b.isExtraDays,
             shortTermCancelled: b.shortTermCancelled,
+            remainingPenaltyDays: getPenaltyDays(b),
             specialDateType: b.specialDateType,
             days: calculateBookingDays(b.startDate, b.endDate)
           }))
@@ -2081,7 +2436,7 @@ exports.getUserAllocation = async (req, res) => {
           // Past penalties are already accounted for in historical allocation windows
           penaltyDays: nextYearBookings
             .filter(b => b.status === 'cancelled' && b.shortTermCancelled && b.endDate >= now)
-            .reduce((total, b) => total + (b.remainingPenaltyDays || 0), 0),
+            .reduce((total, b) => total + getPenaltyDays(b), 0),
           penaltyBookings: nextYearBookings
             .filter(b => b.status === 'cancelled' && b.shortTermCancelled && b.endDate >= now)
             .map(b => ({
@@ -2090,7 +2445,7 @@ exports.getUserAllocation = async (req, res) => {
               endDate: b.endDate ? b.endDate.toISOString().split('T')[0] : null,
               originalDays: b.originalDays,
               rebookedDays: b.rebookedDays || 0,
-              remainingPenaltyDays: b.remainingPenaltyDays || 0,
+              remainingPenaltyDays: getPenaltyDays(b),
               cancelledAt: b.cancelledAt ? b.cancelledAt.toISOString().split('T')[0] : null,
               reassignedTo: b.reassignedTo || null,
               reassignedAt: b.reassignedAt ? b.reassignedAt.toISOString().split('T')[0] : null
@@ -2101,7 +2456,9 @@ exports.getUserAllocation = async (req, res) => {
             endDate: b.endDate ? b.endDate.toISOString().split('T')[0] : null,
             status: b.status,
             isShortTerm: b.isShortTerm,
+            isExtraDays: b.isExtraDays,
             shortTermCancelled: b.shortTermCancelled,
+            remainingPenaltyDays: getPenaltyDays(b),
             specialDateType: b.specialDateType,
             days: calculateBookingDays(b.startDate, b.endDate)
           }))
@@ -2116,21 +2473,19 @@ exports.getUserAllocation = async (req, res) => {
         // Legacy fields for backward compatibility
         activeBookings: currentYearActiveBookings,
         activeBookingsRemaining: maxActiveBookings - currentYearActiveBookings,
-        futureBookings: (await Promise.all(activeBookings.map(async b => {
-          const isInShortTermWindow = await isBookingInShortTermWindow(assetId, b.startDate, b.endDate);
-          if (!isInShortTermWindow) {
-            return {
-              id: b._id,
-              startDate: b.startDate ? b.startDate.toISOString().split('T')[0] : null,
-              endDate: b.endDate ? b.endDate.toISOString().split('T')[0] : null,
-              status: b.status,
-              isShortTerm: b.isShortTerm,
-              shortTermCancelled: b.shortTermCancelled,
-              days: calculateBookingDays(b.startDate, b.endDate)
-            };
-          }
-          return null;
-        }))).filter(booking => booking !== null),
+        futureBookings: activeBookings
+          .filter((b) => !isBookingInShortTermWindow(assetId, b.startDate, b.endDate, { now, shortTermMaxDays }))
+          .map((b) => ({
+            id: b._id,
+            startDate: b.startDate ? b.startDate.toISOString().split('T')[0] : null,
+            endDate: b.endDate ? b.endDate.toISOString().split('T')[0] : null,
+            status: b.status,
+            isShortTerm: b.isShortTerm,
+            isExtraDays: b.isExtraDays,
+            shortTermCancelled: b.shortTermCancelled,
+            remainingPenaltyDays: getPenaltyDays(b),
+            days: calculateBookingDays(b.startDate, b.endDate)
+          })),
         
         // Legacy fields for backward compatibility
         daysBooked: currentYearRegularDaysBooked,
@@ -2143,7 +2498,9 @@ exports.getUserAllocation = async (req, res) => {
           endDate: b.endDate ? b.endDate.toISOString().split('T')[0] : null,
           status: b.status,
           isShortTerm: b.isShortTerm,
+          isExtraDays: b.isExtraDays,
           shortTermCancelled: b.shortTermCancelled,
+          remainingPenaltyDays: getPenaltyDays(b),
           days: calculateBookingDays(b.startDate, b.endDate)
         })),
         allocationWindow: {
@@ -2151,7 +2508,9 @@ exports.getUserAllocation = async (req, res) => {
           end: DateUtils.formatForApi(currentWindow.windowEnd)
         }
       }
-    });
+    };
+    req.perf?.add('compute', Date.now() - responseComputeStartedAt);
+    res.status(200).json(responsePayload);
   } catch (err) {
     res.status(500).json({
       success: false,
@@ -2486,11 +2845,11 @@ exports.processExtraDaysPayment = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        booking,
+        booking: formatBookingForResponse(booking),
         payment: {
           amount: paymentAmount,
           status: 'paid',
-          date: booking.paymentDate
+          date: DateUtils.formatForApi(booking.paymentDate)
         }
       }
     });
@@ -2529,13 +2888,13 @@ exports.getAssetBookings = async (req, res) => {
     // Get all bookings for this asset
     const bookings = await Booking.find({ asset: assetId })
       .populate('user', 'name lastName email')
-      .populate('asset', 'name location type description capacity amenities')
+      .populate('asset', 'name location locationAddress propertyManager type description capacity amenities photos')
       .sort({ startDate: 1 }); // Sort by start date ascending
     
     res.status(200).json({
       success: true,
       count: bookings.length,
-      data: bookings
+      data: bookings.map(formatBookingForResponse)
     });
   } catch (err) {
     console.error('Error fetching asset bookings:', err);

@@ -13,6 +13,7 @@ const {
   createSpecialDates,
   deleteSpecialDate,
   processExtraDaysPayment,
+  getFreedDateAlerts,
   getBlockedDates,
   createBlockedDate,
   deleteBlockedDate
@@ -24,6 +25,7 @@ const {
   validateGetBooking,
   validateDeleteBooking,
   validateGetBookings,
+  validateGetFreedDateAlerts,
   validateGetAvailability,
   validateGetUserAllocation,
   validateCreateSpecialDates,
@@ -58,6 +60,9 @@ router.delete('/blocked-dates/:id', authorize('admin'), deleteBlockedDate);
 
 // Payment processing
 router.post('/payment/:id', validateProcessPayment, processExtraDaysPayment);
+
+// In-app alerts feed for newly freed dates after cancellations
+router.get('/alerts/freed-dates', validateGetFreedDateAlerts, getFreedDateAlerts);
 
 // Asset bookings route
 router.get('/asset/:assetId', getAssetBookings);

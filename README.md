@@ -45,6 +45,10 @@ The authentication system provides:
    FROM_NAME=Asset Booking System
    
    BASE_URL=http://localhost:3000
+   ACCOUNT_SETUP_URL_BASE=http://localhost:3000/account-setup.html
+   PASSWORD_RESET_URL_BASE=http://localhost:3000/reset-password.html
+   EMAIL_STRICT_TRANSPORT=true
+   ALLOW_EMAIL_MOCK_FALLBACK=false
    
    # Rate limiting
    RATE_LIMIT_WINDOW=900000
@@ -180,6 +184,10 @@ src/
 | FROM_EMAIL | Sender email address | noreply@yourdomain.com |
 | FROM_NAME | Sender name | Asset Booking System |
 | BASE_URL | Base URL for email links | http://localhost:3000 |
+| ACCOUNT_SETUP_URL_BASE | Absolute URL used for account setup links | {BASE_URL}/account-setup.html |
+| PASSWORD_RESET_URL_BASE | Absolute URL used for reset password links | {BASE_URL}/reset-password.html |
+| EMAIL_STRICT_TRANSPORT | Fail API calls when SMTP is missing or broken | true |
+| ALLOW_EMAIL_MOCK_FALLBACK | Allow mock success after SMTP send errors | false |
 | RATE_LIMIT_WINDOW | General rate limit window in ms | 900000 (15 minutes) |
 | RATE_LIMIT_MAX | Maximum requests per window | 100 |
 | AUTH_RATE_LIMIT_WINDOW | Auth rate limit window in ms | 3600000 (1 hour) |
