@@ -19,8 +19,8 @@ const nextConfig: NextConfig = {
     ];
   },
   async rewrites() {
-    // Allow clients to use a relative NEXT_PUBLIC_API_BASE_URL like "/api" while still
-    // proxying to the real backend (local in dev, Vercel in prod).
+    // Keep uploads proxied to the backend origin. API requests are handled by
+    // src/app/api/[...path]/route.ts so we can normalize forwarded headers.
     const defaultBackend =
       process.env.NODE_ENV === 'development'
         ? 'http://localhost:3000/api'
@@ -37,10 +37,6 @@ const nextConfig: NextConfig = {
     const backendOrigin = new URL(normalized).origin;
 
     return [
-      {
-        source: '/api/:path*',
-        destination: `${normalized}/:path*`,
-      },
       {
         source: '/uploads/:path*',
         destination: `${backendOrigin}/uploads/:path*`,
