@@ -7,7 +7,7 @@ const app = require('../../src/app');
 const DateUtils = require('../../src/utils/dateUtils');
 const { createUser, createAssetForOwner, createBookingRow, authHeader } = require('../helpers/factories');
 
-const fixturesPath = path.join(__dirname, '../../../tests/date-contract/fixtures/date-contract-fixtures.json');
+const fixturesPath = path.join(__dirname, 'fixtures/date-contract-fixtures.json');
 const fixtures = JSON.parse(fs.readFileSync(fixturesPath, 'utf8'));
 
 describe('Date contract matrix (backend)', () => {
