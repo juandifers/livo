@@ -32,6 +32,9 @@ async function proxy(req: Request, ctx: { params: Promise<{ path: string[] }> })
   // Copy headers through (esp. Authorization). Let fetch handle Host.
   const headers = new Headers(req.headers);
   headers.delete('host');
+  headers.delete('origin');
+  headers.delete('access-control-request-method');
+  headers.delete('access-control-request-headers');
 
   const method = req.method.toUpperCase();
   const init: RequestInit = {
@@ -73,4 +76,3 @@ export async function DELETE(req: Request, ctx: { params: Promise<{ path: string
 export async function OPTIONS(req: Request, ctx: { params: Promise<{ path: string[] }> }) {
   return proxy(req, ctx);
 }
-

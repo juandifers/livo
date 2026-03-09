@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import Cookies from 'js-cookie';
+import { getClientApiBaseUrl } from '@/lib/api.base';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { mapCommonApiError } from '@/lib/i18n/errorMap';
 
@@ -52,6 +53,7 @@ export default function PhotoManager({
   const handleUpload = async () => {
     const filesToUpload = photos.filter(p => p.file);
     if (filesToUpload.length === 0) return;
+    const apiBaseUrl = getClientApiBaseUrl();
     
     setUploading(true);
     setError(null);
@@ -72,7 +74,7 @@ export default function PhotoManager({
         if (photo.file) formData.append('photos', photo.file);
 
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/assets/${assetId}/photos`,
+          `${apiBaseUrl}/assets/${assetId}/photos`,
           {
             method: 'POST',
             body: formData,
@@ -118,6 +120,7 @@ export default function PhotoManager({
   const handleRemove = async (index: number) => {
     const photo = photos[index];
     if (!photo) return;
+    const apiBaseUrl = getClientApiBaseUrl();
 
     // New/local files can be removed client-side only.
     if (photo.preview || photo.file || !photo.url) {
@@ -136,7 +139,7 @@ export default function PhotoManager({
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/assets/${assetId}/photos`,
+        `${apiBaseUrl}/assets/${assetId}/photos`,
         {
           method: 'DELETE',
           credentials: 'include',

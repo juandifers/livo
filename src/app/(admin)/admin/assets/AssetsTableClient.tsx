@@ -3,10 +3,9 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Cookies from 'js-cookie';
 import { clientFetchJson } from '@/lib/api.client';
+import { getClientApiBaseUrl } from '@/lib/api.base';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { mapCommonApiError } from '@/lib/i18n/errorMap';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://livo-backend-api.vercel.app/api';
 
 type Owner = { user?: { _id: string; name?: string; lastName?: string; email: string } | string; sharePercentage: number };
 type Asset = { _id: string; name: string; type?: string; location?: string; owners?: Owner[] };
@@ -123,6 +122,7 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
 
   const uploadPhotos = async (assetId: string) => {
     if (photos.length === 0) return [];
+    const apiBaseUrl = getClientApiBaseUrl();
 
     const token = Cookies.get('token');
     const headers: HeadersInit = {};
@@ -135,7 +135,7 @@ export default function AssetsTableClient({ assets }: { assets: Asset[] }) {
       const formData = new FormData();
       formData.append('photos', photo);
 
-      const response = await fetch(`${API_BASE_URL}/assets/${assetId}/photos`, {
+      const response = await fetch(`${apiBaseUrl}/assets/${assetId}/photos`, {
         method: 'POST',
         body: formData,
         credentials: 'include',

@@ -1,20 +1,19 @@
 // src/lib/api.client.ts - client-only fetch helpers
 'use client';
 import Cookies from 'js-cookie';
-
-// Prefer env var; fallback to stable backend URL to avoid undefined BASE_URL in production
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://livo-backend-api.vercel.app/api';
+import { getClientApiBaseUrl } from './api.base';
 
 type FetchJsonOptions = RequestInit & { skipAuth?: boolean };
 
 export async function clientFetchJson<T>(path: string, options: FetchJsonOptions = {}): Promise<T> {
   const token = Cookies.get('token');
+  const baseUrl = getClientApiBaseUrl();
 
   const headers = new Headers(options.headers || {});
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (!options.skipAuth && token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${baseUrl}${path}`, {
     cache: 'no-store',
     credentials: 'include',
     ...options,
@@ -41,5 +40,4 @@ export async function clientFetchJson<T>(path: string, options: FetchJsonOptions
   }
   return res.json() as Promise<T>;
 }
-
 
