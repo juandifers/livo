@@ -1,0 +1,37 @@
+[
+  {
+    "scenarioId": "dst-us-start-2026",
+    "inputDate": "2026-03-08",
+    "expectedApiDate": "2026-03-08",
+    "expectedDisplayDate": "2026-03-08",
+    "assetType": "home"
+  },
+  {
+    "scenarioId": "dst-us-end-2026",
+    "inputDate": "2026-11-01",
+    "expectedApiDate": "2026-11-01",
+    "expectedDisplayDate": "2026-11-01",
+    "assetType": "boat"
+  },
+  {
+    "scenarioId": "month-end-january",
+    "inputDate": "2026-01-31",
+    "expectedApiDate": "2026-01-31",
+    "expectedDisplayDate": "2026-01-31",
+    "assetType": "home"
+  },
+  {
+    "scenarioId": "leap-day",
+    "inputDate": "2028-02-29",
+    "expectedApiDate": "2028-02-29",
+    "expectedDisplayDate": "2028-02-29",
+    "assetType": "boat"
+  },
+  {
+    "scenarioId": "year-boundary",
+    "inputDate": "2026-12-31",
+    "expectedApiDate": "2026-12-31",
+    "expectedDisplayDate": "2026-12-31",
+    "assetType": "home"
+  }
+]
