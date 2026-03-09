@@ -1,15 +1,5 @@
 const User = require('../models/User');
-const fs = require('fs');
-const path = require('path');
-
-// Log file for null owner records
-const logFilePath = path.join(__dirname, '../../logs');
-const nullOwnersLogFile = path.join(logFilePath, 'null-owners.log');
-
-// Ensure logs directory exists
-if (!fs.existsSync(logFilePath)) {
-  fs.mkdirSync(logFilePath, { recursive: true });
-}
+const { appendLogLine } = require('./logFiles');
 
 /**
  * Log null owner information for bookkeeping
@@ -20,8 +10,8 @@ if (!fs.existsSync(logFilePath)) {
 const logNullOwner = (assetId, ownerId, sharePercentage) => {
   const timestamp = new Date().toISOString();
   const logEntry = `${timestamp} - Asset: ${assetId}, Null Owner ID: ${ownerId}, Share: ${sharePercentage}%\n`;
-  
-  fs.appendFileSync(nullOwnersLogFile, logEntry);
+
+  appendLogLine('null-owners.log', logEntry);
 };
 
 /**
