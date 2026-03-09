@@ -7,6 +7,7 @@ process.env.CORS_ALLOW_ALL_IN_DEV = 'true';
 process.env.ALLOW_EMAIL_MOCK_FALLBACK = 'true';
 
 const mongoose = require('mongoose');
+const shouldSkipDb = process.env.SKIP_TEST_DB === 'true';
 
 const clearCollections = async () => {
   if (!mongoose.connection || mongoose.connection.readyState !== 1) {
@@ -20,6 +21,10 @@ const clearCollections = async () => {
 };
 
 beforeAll(async () => {
+  if (shouldSkipDb) {
+    return;
+  }
+
   if (mongoose.connection.readyState === 2) {
     await new Promise((resolve, reject) => {
       mongoose.connection.once('connected', resolve);
@@ -38,10 +43,18 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
+  if (shouldSkipDb) {
+    return;
+  }
+
   await clearCollections();
 });
 
 afterAll(async () => {
+  if (shouldSkipDb) {
+    return;
+  }
+
   if (mongoose.connection.readyState === 1) {
     await mongoose.connection.dropDatabase();
     await mongoose.connection.close();

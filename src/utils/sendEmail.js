@@ -1,7 +1,6 @@
 const nodemailer = require('nodemailer');
 const config = require('../config/config');
-const fs = require('fs');
-const path = require('path');
+const { appendLogLine } = require('./logFiles');
 
 const shouldMockByFlag = process.env.NODE_ENV === 'test' || process.env.MOCK_EMAIL === 'true';
 const isSmtpConfigured = Boolean(config.email.host && config.email.username && config.email.password);
@@ -17,15 +16,7 @@ const writeEmailToLogFile = (options, metadata = {}) => {
     timestamp: new Date().toISOString()
   };
 
-  const logsDir = path.join(__dirname, '../../logs');
-  if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, { recursive: true });
-  }
-
-  fs.appendFileSync(
-    path.join(logsDir, 'email-logs.json'),
-    JSON.stringify(emailLog) + '\n'
-  );
+  appendLogLine('email-logs.json', JSON.stringify(emailLog) + '\n');
 };
 
 /**
