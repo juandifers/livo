@@ -20,9 +20,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm install
       - name: Verify canonical rule traceability tags
         run: npm run test:rules:traceability
 
@@ -50,9 +49,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm install
       - name: Run backend booking rule tests
         run: npm run test:rules
 
@@ -80,9 +78,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm install
       - name: Run date contract tests in timezone matrix
         run: |
           set -euo pipefail
@@ -106,7 +103,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: npm
       - name: Validate deploy secrets
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
