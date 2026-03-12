@@ -80,7 +80,11 @@ app.use(perfLogger);
 app.use(apiLimiter);
 
 // Basic health endpoint for uptime checks
-app.get('/api/healthz', (req, res) => {
+app.get('/api/healthz', async (req, res) => {
+  if (mongoose.connection.readyState !== 1) {
+    await connectDB();
+  }
+
   const isDatabaseConnected = mongoose.connection.readyState === 1;
   const httpStatus = isDatabaseConnected ? 200 : 503;
 
@@ -90,6 +94,20 @@ app.get('/api/healthz', (req, res) => {
     database: isDatabaseConnected ? 'connected' : 'disconnected',
     timestamp: new Date().toISOString()
   });
+});
+
+// On serverless cold starts, wait for MongoDB before routing DB-backed API requests.
+app.use('/api', async (req, res, next) => {
+  const connection = await connectDB();
+
+  if (!connection || mongoose.connection.readyState !== 1) {
+    return res.status(503).json({
+      success: false,
+      error: 'Database unavailable'
+    });
+  }
+
+  return next();
 });
 
 // Mount routes
