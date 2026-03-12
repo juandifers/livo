@@ -59,7 +59,7 @@ const isOriginAllowed = (origin) => {
     return true;
   }
 
-  return config.cors.allowedOrigins.includes(origin);
+  return config.cors.isOriginAllowed(origin);
 };
 
 // Enable CORS using explicit allowlist in production

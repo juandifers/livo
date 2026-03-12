@@ -16,6 +16,71 @@ const parseCsvEnv = (value) =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
+const normalizeOrigin = (origin) =>
+  String(origin || '')
+    .trim()
+    .replace(/\/$/, '');
+
+const parseOrigin = (origin) => {
+  try {
+    const url = new URL(normalizeOrigin(origin));
+    return {
+      origin: url.origin,
+      protocol: url.protocol,
+      hostname: url.hostname.toLowerCase(),
+      port: url.port || ''
+    };
+  } catch (_error) {
+    return null;
+  }
+};
+
+const parseAllowedOriginPattern = (allowedOrigin) => {
+  const normalized = normalizeOrigin(allowedOrigin);
+  if (!normalized) return null;
+  if (normalized === '*') {
+    return { any: true };
+  }
+
+  if (!normalized.includes('*')) {
+    const parsed = parseOrigin(normalized);
+    return parsed ? { ...parsed, wildcardHost: false } : null;
+  }
+
+  const wildcardMatch = normalized.match(/^(https?):\/\/\*\.([^/:]+)(?::(\d+))?$/i);
+  if (!wildcardMatch) {
+    return null;
+  }
+
+  return {
+    any: false,
+    protocol: `${wildcardMatch[1].toLowerCase()}:`,
+    hostnameSuffix: wildcardMatch[2].toLowerCase(),
+    port: wildcardMatch[3] || '',
+    wildcardHost: true
+  };
+};
+
+const isOriginAllowed = (origin, allowedOrigins = []) => {
+  const parsedOrigin = parseOrigin(origin);
+  if (!parsedOrigin) return false;
+
+  return allowedOrigins.some((allowedOrigin) => {
+    const parsedAllowedOrigin = parseAllowedOriginPattern(allowedOrigin);
+    if (!parsedAllowedOrigin) return false;
+    if (parsedAllowedOrigin.any) return true;
+
+    if (parsedAllowedOrigin.wildcardHost) {
+      if (parsedAllowedOrigin.protocol !== parsedOrigin.protocol) return false;
+      if (parsedAllowedOrigin.port && parsedAllowedOrigin.port !== parsedOrigin.port) return false;
+      if (parsedOrigin.hostname === parsedAllowedOrigin.hostnameSuffix) return false;
+      return parsedOrigin.hostname.endsWith(`.${parsedAllowedOrigin.hostnameSuffix}`);
+    }
+
+    return parsedAllowedOrigin.origin === parsedOrigin.origin;
+  });
+};
+
 const env = process.env.NODE_ENV || 'development';
 const isProduction = env === 'production';
 const defaultMongoUri = 'mongodb://localhost:27017/assetBookingSystem';
@@ -58,7 +123,9 @@ module.exports = {
   // CORS allowlist
   cors: {
     allowedOrigins: parseCsvEnv(process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ORIGINS),
-    allowAllInDevelopment: parseBooleanEnv(process.env.CORS_ALLOW_ALL_IN_DEV, true)
+    allowAllInDevelopment: parseBooleanEnv(process.env.CORS_ALLOW_ALL_IN_DEV, true),
+    isOriginAllowed: (origin) =>
+      isOriginAllowed(origin, parseCsvEnv(process.env.CORS_ALLOWED_ORIGINS || process.env.CORS_ORIGINS))
   },
 
   // Proxy setting required for accurate client IP behind Vercel/load balancers
