@@ -1,13 +1,13 @@
 jest.mock('../../src/utils/sendEmail', () => jest.fn().mockResolvedValue(true));
 
 const fs = require('node:fs');
-const path = require('node:path');
+
 const request = require('supertest');
 const app = require('../../src/app');
 const DateUtils = require('../../src/utils/dateUtils');
 const { createUser, createAssetForOwner, createBookingRow, authHeader } = require('../helpers/factories');
 
-const fixturesPath = path.join(__dirname, 'fixtures/date-contract-fixtures.json');
+const fixturesPath = require.resolve('@livo/contracts/src/fixtures/date-contract-fixtures.json');
 const fixtures = JSON.parse(fs.readFileSync(fixturesPath, 'utf8'));
 
 describe('Date contract matrix (backend)', () => {

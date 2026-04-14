@@ -1,7 +1,6 @@
 import fs from 'node:fs';
-import path from 'node:path';
 
-const fixturesPath = path.join(__dirname, 'fixtures/date-contract-fixtures.json');
+const fixturesPath = require.resolve('@livo/contracts/src/fixtures/date-contract-fixtures.json');
 const fixtures = JSON.parse(fs.readFileSync(fixturesPath, 'utf8'));
 
 const toDateOnly = (value: Date) =>
