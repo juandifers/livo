@@ -1,0 +1,35 @@
+{
+  "name": "livo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "LIVO monorepo: backend API, admin web, and mobile app.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0 <21.0.0"
+  },
+  "scripts": {
+    "dev": "npm run kill-ports && concurrently -n be,admin,mobile -c blue,magenta,green \"npm run dev -w asset-booking-system\" \"npm run dev -w livoadmin\" \"npm run start -w livoapp-fe\"",
+    "dev:be": "npm run dev -w asset-booking-system",
+    "dev:admin": "npm run dev -w livoadmin",
+    "dev:mobile": "npm run start -w livoapp-fe",
+    "build:admin": "npm run build -w livoadmin",
+    "kill-ports": "npx kill-port 3000 3001 8081 || true",
+    "install:all": "npm install",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:booking:gate": "npm run test:booking:gate -w asset-booking-system",
+    "test:rules:traceability": "npm run test:rules:traceability -w asset-booking-system",
+    "test:rules": "npm run test:rules -w asset-booking-system",
+    "test:date:contract": "npm run test:date:contract -w asset-booking-system",
+    "test:be:rules": "npm run test:rules -w asset-booking-system",
+    "test:fe:booking": "npm run test:booking -w livoapp-fe",
+    "test:admin:booking": "npm run test:booking -w livoadmin"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "kill-port": "^2.0.1"
+  }
+}
