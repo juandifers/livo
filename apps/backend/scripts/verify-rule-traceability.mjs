@@ -1,12 +1,13 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-const ROOT = process.cwd();
+const WORKSPACE_ROOT = process.cwd();
+const MONOREPO_ROOT = path.resolve(WORKSPACE_ROOT, '../..');
 const RULE_DOCS = [
-  path.join(ROOT, 'docs/rules/rulesBOATS.md'),
-  path.join(ROOT, 'docs/rules/rulesHOMES.md')
+  path.join(MONOREPO_ROOT, 'docs/rules/rulesBOATS.md'),
+  path.join(MONOREPO_ROOT, 'docs/rules/rulesHOMES.md')
 ];
-const TEST_DIR = path.join(ROOT, 'tests/booking-rules');
+const TEST_DIR = path.join(WORKSPACE_ROOT, 'tests/booking-rules');
 const TAG_PATTERN = /\[(RULE-(?:HOME|BOAT)-\d{3})\]\[(allow|block|boundary)\]/g;
 
 const walkFiles = async (dir) => {
