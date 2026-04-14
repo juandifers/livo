@@ -4,6 +4,7 @@ import { OWNER_COLOR_PALETTE } from '@/lib/colors';
 import { clientFetchJson } from '@/lib/api.client';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { mapCommonApiError } from '@/lib/i18n/errorMap';
+import { VALID_OWNERSHIP_PERCENTAGES } from '@livo/contracts';
 
 type Owner = { userId: string; label: string; sharePercentage: number };
 type User = { _id: string; name?: string; lastName?: string; email: string };
@@ -41,7 +42,7 @@ export default function AssetOwnersPieClient({ owners, assetId, onUpdate }: { ow
     }
   }, [isEditMode, owners]);
 
-  const validPercentages = [12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100];
+  const validPercentages = VALID_OWNERSHIP_PERCENTAGES;
 
   const displayOwners = isEditMode ? editableOwners : owners;
 

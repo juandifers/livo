@@ -5,6 +5,7 @@ import { clientFetchJson } from '@/lib/api.client';
 import { useI18n } from '@/lib/i18n/I18nProvider';
 import { mapCommonApiError } from '@/lib/i18n/errorMap';
 import TwoStepConfirmModal from '@/components/admin/TwoStepConfirmModal';
+import { MIN_STAY_HOME, MIN_STAY_BOAT, MAX_BOOKING_LENGTH } from '@livo/contracts';
 
 type AvailabilityDay = {
   available: boolean;
@@ -224,12 +225,12 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
     const end = parseDateOnly(createEnd);
     if (end < start) errors.push(t('End must be after start'));
     const days = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
-    const minStay = assetType === 'boat' ? 1 : 2;
-    const maxStay = 14;
+    const minStay = assetType === 'boat' ? MIN_STAY_BOAT : MIN_STAY_HOME;
+    const maxStay = MAX_BOOKING_LENGTH;
     if (days < minStay) {
       errors.push(t('Minimum stay is {{days}} day{{suffix}}', { days: minStay, suffix: minStay > 1 ? 's' : '' }));
     }
-    if (days > maxStay) errors.push(t('Maximum stay is 14 days'));
+    if (days > maxStay) errors.push(t('Maximum stay is {{days}} days', { days: maxStay }));
     // conflicts with other bookings (any owner)
     const range = eachDateBetween(createStart, createEnd);
     const conflictDate = range.find((d) => calendar[d]?.bookings?.length > 0);
@@ -709,9 +710,9 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
               let invalidAsEnd = false;
               if (createStart && dateStr >= createStart && !createEnd) {
                 const candidate = { start: createStart, end: dateStr };
-                const minStay = assetType === 'boat' ? 1 : 2;
+                const minStay = assetType === 'boat' ? MIN_STAY_BOAT : MIN_STAY_HOME;
                 const days = Math.floor((parseDateOnly(candidate.end).getTime() - parseDateOnly(candidate.start).getTime()) / 86400000) + 1;
-                if (days < minStay || days > 14) invalidAsEnd = true;
+                if (days < minStay || days > MAX_BOOKING_LENGTH) invalidAsEnd = true;
                 const range = eachDateBetween(candidate.start, candidate.end);
                 if (range.some((d0) => calendar[d0]?.bookings?.length > 0)) invalidAsEnd = true;
                 // If gap rule is violated at the selected start for the chosen owner, mark all ends invalid
@@ -782,12 +783,12 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
                       }
                       
                       // Validate end selection
-                      const minStay = assetType === 'boat' ? 1 : 2;
+                      const minStay = assetType === 'boat' ? MIN_STAY_BOAT : MIN_STAY_HOME;
                       const days = Math.floor((parseDateOnly(dateStr).getTime() - parseDateOnly(createStart).getTime()) / 86400000) + 1;
-                      
+
                       // Reject if violates constraints
-                      if (days < minStay || days > 14) {
-                        setCreateError(t('Selection must be {{min}}-14 days', { min: minStay }));
+                      if (days < minStay || days > MAX_BOOKING_LENGTH) {
+                        setCreateError(t('Selection must be {{min}}-{{max}} days', { min: minStay, max: MAX_BOOKING_LENGTH }));
                         return;
                       }
                       
