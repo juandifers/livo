@@ -1,5 +1,5 @@
 {
-  "name": "livoapp-fe",
+  "name": "@livo/mobile",
   "main": "./node_modules/expo/AppEntry.js",
   "version": "1.0.0",
   "scripts": {

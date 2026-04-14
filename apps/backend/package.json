@@ -1,5 +1,5 @@
 {
-  "name": "asset-booking-system",
+  "name": "@livo/backend",
   "version": "1.0.0",
   "description": "A system for managing shared asset bookings",
   "main": "src/app.js",
