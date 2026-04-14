@@ -1,0 +1,14 @@
+export const MIN_STAY_HOME: number;
+export const MIN_STAY_BOAT: number;
+export const MAX_BOOKING_LENGTH: number;
+export const VALID_OWNERSHIP_PERCENTAGES: readonly number[];
+export const DAYS_PER_EIGHTH_SHARE: number;
+export const EXTRA_DAYS_PER_EIGHTH: number;
+export const EXTRA_DAY_COST: number;
+export const STANDARD_BOOKING_LENGTH: number;
+export const VERY_SHORT_TERM_MAX_DAYS: number;
+export const SHORT_TERM_MAX_DAYS_HOME: number;
+export const SHORT_TERM_MAX_DAYS_BOAT: number;
+export const MAX_ADVANCE_BOOKING_DAYS: number;
+export const MAX_ACTIVE_BOOKINGS_PER_EIGHTH: number;
+export const dateContractFixtures: unknown;

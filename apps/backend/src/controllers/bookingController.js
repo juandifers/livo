@@ -5,6 +5,19 @@ const SpecialDate = require('../models/SpecialDate');
 const DateUtils = require('../utils/dateUtils');
 const sendEmail = require('../utils/sendEmail');
 const {
+  MIN_STAY_HOME,
+  MIN_STAY_BOAT,
+  MAX_BOOKING_LENGTH,
+  DAYS_PER_EIGHTH_SHARE,
+  EXTRA_DAYS_PER_EIGHTH,
+  EXTRA_DAY_COST,
+  STANDARD_BOOKING_LENGTH,
+  VERY_SHORT_TERM_MAX_DAYS: SHORT_TERM_MIN_DAYS,
+  SHORT_TERM_MAX_DAYS_HOME: SHORT_TERM_MAX_DAYS,
+  MAX_ADVANCE_BOOKING_DAYS,
+  MAX_ACTIVE_BOOKINGS_PER_EIGHTH,
+} = require('@livo/contracts');
+const {
   getBookingConfirmationTemplate,
   getBookingCancellationTemplate
 } = require('../utils/emailTemplates');
@@ -88,19 +101,8 @@ const trySendBookingCancellationEmail = async ({ user, asset, booking, cancelled
   }
 };
 
-// Constants for booking rules
-const DAYS_PER_EIGHTH_SHARE = 44; // Days allowed per 1/8 share (12.5%)
-const MAX_BOOKING_LENGTH = 14; // Maximum days for a continuous stay
-const STANDARD_BOOKING_LENGTH = 7; // Standard booking length
-const MAX_ADVANCE_BOOKING_YEARS = 2; // Maximum years in advance for booking
-const MAX_ACTIVE_BOOKINGS_PER_EIGHTH = 6; // Maximum active bookings per 1/8 share (>60 days only)
-const MIN_ADVANCE_DAYS = 0; // Real-time bookings allowed
-const SHORT_TERM_MIN_DAYS = 7; // <7 days = very short term
-const SHORT_TERM_MAX_DAYS = 60; // Short-term window up to 60 days for all assets
-const EXTRA_DAYS_PER_EIGHTH = 10; // Extra paid days allowed per 1/8 share
-const EXTRA_DAY_COST = 100; // Cost per extra day in default currency, placeholder
-const MIN_STAY_BOAT = 1; // Minimum stay for boats in days
-const MIN_STAY_HOME = 2; // Minimum stay for homes in days
+// Derived from @livo/contracts constants (backend uses years for advance booking logic)
+const MAX_ADVANCE_BOOKING_YEARS = Math.round(MAX_ADVANCE_BOOKING_DAYS / 365);
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
 // Helper function to calculate allowed days based on share percentage

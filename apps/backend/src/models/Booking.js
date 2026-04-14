@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Asset = require('./Asset');
+const { MIN_STAY_HOME, MIN_STAY_BOAT, MAX_BOOKING_LENGTH } = require('@livo/contracts');
 
 const BookingSchema = new mongoose.Schema({
   user: {
@@ -202,10 +203,10 @@ BookingSchema.pre('validate', async function(next) {
       endDate: this.endDate,
       diff: this.endDate - this.startDate,
       totalDays: totalDays,
-      minStay: asset.type === 'boat' ? 1 : 2
+      minStay: asset.type === 'boat' ? MIN_STAY_BOAT : MIN_STAY_HOME
     });
 
-    const minStay = asset.type === 'boat' ? 1 : 2;
+    const minStay = asset.type === 'boat' ? MIN_STAY_BOAT : MIN_STAY_HOME;
     if (totalDays < minStay) {
       console.error('❌ Booking rejected - minimum stay violation:', {
         totalDays,
@@ -215,7 +216,7 @@ BookingSchema.pre('validate', async function(next) {
       return next(new Error(`Minimum stay for ${asset.type} is ${minStay} day${minStay > 1 ? 's' : ''}`));
     }
 
-    const maxStay = 14;
+    const maxStay = MAX_BOOKING_LENGTH;
     if (totalDays > maxStay) {
       return next(new Error(`A continuous stay cannot exceed ${maxStay} days`));
     }

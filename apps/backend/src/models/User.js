@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const { VALID_OWNERSHIP_PERCENTAGES } = require('@livo/contracts');
 
 const userSchema = new mongoose.Schema({
   name: {
@@ -55,8 +56,7 @@ const userSchema = new mongoose.Schema({
       required: true,
       validate: {
         validator: function(value) {
-          const standardPercentages = [12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100];
-          return standardPercentages.includes(value);
+          return VALID_OWNERSHIP_PERCENTAGES.includes(value);
         },
         message: props => `${props.value} is not a valid share percentage. Must be one of the standard percentages.`
       }

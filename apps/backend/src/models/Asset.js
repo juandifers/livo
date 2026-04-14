@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const User = require('./User');
+const { VALID_OWNERSHIP_PERCENTAGES } = require('@livo/contracts');
 
 const OwnerAnniversaryHistorySchema = new mongoose.Schema(
   {
@@ -44,9 +45,7 @@ const OwnerSchema = new mongoose.Schema({
     max: [100, 'Share percentage cannot exceed 100%'],
     validate: {
       validator: function(value) {
-        // Define standard percentages
-        const standardPercentages = [12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100];
-        return standardPercentages.includes(value);
+        return VALID_OWNERSHIP_PERCENTAGES.includes(value);
       },
       message: props => `${props.value} is not a valid share percentage.`
     }

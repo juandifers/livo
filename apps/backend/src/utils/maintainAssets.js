@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Asset = require('../models/Asset');
 const User = require('../models/User');
 const config = require('../config/config');
+const { VALID_OWNERSHIP_PERCENTAGES } = require('@livo/contracts');
 
 // Connect to MongoDB
 mongoose.connect(config.mongoURI)
@@ -83,11 +84,10 @@ async function maintainAssets() {
         
         // Check for valid share percentage
         const sharePercentage = Number(owner.sharePercentage);
-        const validPercentages = [12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100];
-        const hasValidPercentage = 
-          !isNaN(sharePercentage) && 
-          sharePercentage > 0 && 
-          validPercentages.includes(sharePercentage);
+        const hasValidPercentage =
+          !isNaN(sharePercentage) &&
+          sharePercentage > 0 &&
+          VALID_OWNERSHIP_PERCENTAGES.includes(sharePercentage);
         
         if (!hasValidPercentage) {
           console.log(`- Removing owner (${owner.user}) with invalid share percentage: ${sharePercentage}`);
@@ -140,9 +140,7 @@ async function maintainAssets() {
             const originalPercentage = Number(asset.owners[i].sharePercentage);
             const newPercentage = Math.floor(originalPercentage * scaleFactor * 8) / 8; // Round to nearest 1/8
             
-            // Make sure it's one of the standard percentages
-            const standardPercentages = [12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100];
-            let closestPercentage = standardPercentages.reduce((prev, curr) => 
+            let closestPercentage = VALID_OWNERSHIP_PERCENTAGES.reduce((prev, curr) =>
               Math.abs(curr - newPercentage) < Math.abs(prev - newPercentage) ? curr : prev
             );
             

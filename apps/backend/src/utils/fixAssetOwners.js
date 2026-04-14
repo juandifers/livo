@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const config = require('../config/config');
 const User = require('../models/User');
 const Asset = require('../models/Asset');
+const { VALID_OWNERSHIP_PERCENTAGES } = require('@livo/contracts');
 const { ObjectId } = mongoose.Types;
 
 // Connect to MongoDB
@@ -78,15 +79,12 @@ async function fixAssetOwners() {
         // Log all owners for debugging
         console.log(`Owner: ${owner?.user}, SharePercentage: ${sharePercentage}`);
         
-        // Check if percentage is valid
-        const validPercentages = [12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100];
-        
-        const hasValidPercentage = 
-          owner && 
-          sharePercentage !== undefined && 
-          sharePercentage !== null && 
+        const hasValidPercentage =
+          owner &&
+          sharePercentage !== undefined &&
+          sharePercentage !== null &&
           sharePercentage > 0 &&
-          validPercentages.includes(Number(sharePercentage));
+          VALID_OWNERSHIP_PERCENTAGES.includes(Number(sharePercentage));
         
         if (!hasValidPercentage) {
           console.log(`Removing invalid owner from asset ${assetId}: Share percentage: ${sharePercentage}`);

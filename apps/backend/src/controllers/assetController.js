@@ -4,6 +4,7 @@ const { handleNullOwners } = require('../utils/assetUtils');
 const DateUtils = require('../utils/dateUtils');
 const { isCloudinaryConfigured, uploadBuffer } = require('../config/cloudinary');
 const config = require('../config/config');
+const { VALID_OWNERSHIP_PERCENTAGES } = require('@livo/contracts');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -42,7 +43,7 @@ exports.getAssets = async (req, res) => {
           const sharePercentage = Number(owner.sharePercentage);
           return !isNaN(sharePercentage) && 
                  sharePercentage > 0 && 
-                 [12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100].includes(sharePercentage);
+                 VALID_OWNERSHIP_PERCENTAGES.includes(sharePercentage);
         });
         
         if (validOwners.length !== asset.owners.length) {
@@ -314,10 +315,7 @@ exports.addOwner = async (req, res) => {
       });
     }
     
-    // Validate allowed share percentages based on user role
-    const validPercentages = [12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100];
-    
-    if (!validPercentages.includes(Number(sharePercentage))) {
+    if (!VALID_OWNERSHIP_PERCENTAGES.includes(Number(sharePercentage))) {
       return res.status(400).json({
         success: false,
         error: 'Share percentage must be one of the standard percentages: 12.5%, 25%, 37.5%, 50%, 62.5%, 75%, 87.5%, or 100%'
@@ -533,9 +531,6 @@ exports.updateOwners = async (req, res) => {
       });
     }
     
-    // Validate share percentages
-    const validPercentages = [12.5, 25, 37.5, 50, 62.5, 75, 87.5, 100];
-    
     for (const owner of owners) {
       if (!owner.userId) {
         return res.status(400).json({
@@ -543,11 +538,11 @@ exports.updateOwners = async (req, res) => {
           error: 'Each owner must have a userId'
         });
       }
-      
-      if (!validPercentages.includes(Number(owner.sharePercentage))) {
+
+      if (!VALID_OWNERSHIP_PERCENTAGES.includes(Number(owner.sharePercentage))) {
         return res.status(400).json({
           success: false,
-          error: `Share percentage must be one of: ${validPercentages.join(', ')}`
+          error: `Share percentage must be one of: ${VALID_OWNERSHIP_PERCENTAGES.join(', ')}`
         });
       }
       

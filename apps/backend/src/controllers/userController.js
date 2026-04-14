@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Asset = require('../models/Asset');
 const Booking = require('../models/Booking');
 const mongoose = require('mongoose');
+const { DAYS_PER_EIGHTH_SHARE } = require('@livo/contracts');
 
 // @desc    Get all users
 // @route   GET /api/users
@@ -290,8 +291,7 @@ exports.getUserOwnedAssets = async (req, res) => {
         }));
       
       // Calculate days remaining based on ownership percentage
-      // Using 44 days per 12.5% share as per booking rules
-      const daysAllocation = Math.floor((userOwnership.sharePercentage / 12.5) * 44);
+      const daysAllocation = Math.floor((userOwnership.sharePercentage / 12.5) * DAYS_PER_EIGHTH_SHARE);
       const daysRemaining = Math.max(0, daysAllocation - daysUsed);
       
       // Format the response
