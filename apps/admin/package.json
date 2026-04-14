@@ -12,6 +12,7 @@
     "test:date:contract": "jest --runInBand tests/date-contract"
   },
   "dependencies": {
+    "@livo/contracts": "*",
     "js-cookie": "^3.0.5",
     "next": "16.1.6",
     "react": "19.1.0",
