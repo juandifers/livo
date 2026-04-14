@@ -1,20 +1,31 @@
 import { differenceInDays, isBefore, isAfter, addDays, isSameDay } from 'date-fns';
 import DateUtils from './dateUtils';
 import { getActiveLocale } from '../i18n';
+import {
+  SHORT_TERM_MAX_DAYS_BOAT,
+  SHORT_TERM_MAX_DAYS_HOME,
+  VERY_SHORT_TERM_MAX_DAYS,
+  MAX_BOOKING_LENGTH,
+  STANDARD_BOOKING_LENGTH,
+  MAX_ADVANCE_BOOKING_DAYS,
+  MIN_STAY_HOME,
+  MIN_STAY_BOAT,
+  DAYS_PER_EIGHTH_SHARE,
+} from '@livo/contracts';
 
 /**
  * Comprehensive booking validation utility
  * Implements all business rules from the backend
  */
 
-// Constants from business rules (aligned with backend)
+// Re-exported under the names used throughout this file
 const BOOKING_CONSTANTS = {
-  SHORT_TERM_THRESHOLD_BOAT: 30, // days
-  SHORT_TERM_THRESHOLD_HOME: 60, // days
-  VERY_SHORT_TERM_THRESHOLD: 7, // days
-  MAX_CONTINUOUS_STAY: 14, // days
-  STANDARD_BOOKING_LENGTH: 7, // days
-  MAX_ADVANCE_BOOKING_DAYS: 730, // 2 years
+  SHORT_TERM_THRESHOLD_BOAT: SHORT_TERM_MAX_DAYS_BOAT,
+  SHORT_TERM_THRESHOLD_HOME: SHORT_TERM_MAX_DAYS_HOME,
+  VERY_SHORT_TERM_THRESHOLD: VERY_SHORT_TERM_MAX_DAYS,
+  MAX_CONTINUOUS_STAY: MAX_BOOKING_LENGTH,
+  STANDARD_BOOKING_LENGTH,
+  MAX_ADVANCE_BOOKING_DAYS,
 };
 
 const BOOKING_TYPES = {
@@ -75,7 +86,7 @@ export const validateBookingDates = (startDate, endDate, assetType, bookingType,
   
   // For same-day bookings, check minimum stay rules by asset type
   if (isSameDay(parsedStartDate, parsedEndDate)) {
-    const minStay = assetType === 'boat' ? 1 : 2;
+    const minStay = assetType === 'boat' ? MIN_STAY_BOAT : MIN_STAY_HOME;
     if (minStay > 1) {
       errors.push('End date must be after start date for homes (minimum 2 days)');
       return { isValid: false, errors };
@@ -113,7 +124,7 @@ export const validateBookingDates = (startDate, endDate, assetType, bookingType,
   }
   
   // Minimum stay by asset type
-  const minStay = assetType === 'boat' ? 1 : 2;
+  const minStay = assetType === 'boat' ? MIN_STAY_BOAT : MIN_STAY_HOME;
   if (bookingLength < minStay) {
     errors.push(`Min stay: ${minStay} day${minStay > 1 ? 's' : ''}`);
   }
@@ -242,7 +253,7 @@ export const validateOwnershipAllocation = (userId, userOwnership, bookingLength
   }
   
   // Calculate allocation: 44 days per 1/8 share (12.5%)
-  const allocatedDays = Math.floor((userOwnership.sharePercentage / 12.5) * 44);
+  const allocatedDays = Math.floor((userOwnership.sharePercentage / 12.5) * DAYS_PER_EIGHTH_SHARE);
   
   // Prefer backend-provided yearly allocation if available
   let usedDays = null;
