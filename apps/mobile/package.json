@@ -11,8 +11,7 @@
     "lint": "expo lint",
     "test": "jest --runInBand",
     "test:booking": "jest --runInBand tests/booking",
-    "test:date:contract": "jest --runInBand tests/date-contract",
-    "test:e2e:nightly": "echo \"Detox nightly job placeholder. Replace with actual detox command.\""
+    "test:date:contract": "jest --runInBand tests/date-contract"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
