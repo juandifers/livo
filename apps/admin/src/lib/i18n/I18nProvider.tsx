@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DEFAULT_LOCALE, LOCALE_COOKIE_KEY, LOCALE_STORAGE_KEY, getIntlLocale, normalizeLocale, type Locale } from './constants';
 import { translate } from './index';
@@ -36,7 +36,7 @@ export function I18nProvider({ children, initialLocale }: I18nProviderProps) {
   const router = useRouter();
   const [locale, setLocaleState] = useState<Locale>(normalizeLocale(initialLocale));
 
-  const setLocale = (nextLocale: Locale, options?: SetLocaleOptions) => {
+  const setLocale = useCallback((nextLocale: Locale, options?: SetLocaleOptions) => {
     const normalized = normalizeLocale(nextLocale);
     setLocaleState(normalized);
 
@@ -48,7 +48,7 @@ export function I18nProvider({ children, initialLocale }: I18nProviderProps) {
     if (options?.refresh) {
       router.refresh();
     }
-  };
+  }, [router]);
 
   const value = useMemo<I18nContextValue>(() => {
     const t = (key: string, params?: Record<string, unknown>) => translate(locale, key, params);
@@ -65,7 +65,7 @@ export function I18nProvider({ children, initialLocale }: I18nProviderProps) {
       setLocale,
       formatDate,
     };
-  }, [locale]);
+  }, [locale, setLocale]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

@@ -238,7 +238,7 @@ export default function AssetCalendarClient({ assetId, viewUserId }: { assetId: 
     // split preview for > 7 days
     const segments: { start: string; end: string }[] = [];
     if (days > 7) {
-      let cur = parseDateOnly(createStart);
+      const cur = parseDateOnly(createStart);
       const last = parseDateOnly(createEnd);
       while (cur <= last) {
         const segStart = new Date(cur);
