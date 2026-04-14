@@ -1,0 +1,35 @@
+{
+  "name": "livo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "LIVO monorepo: backend API, admin web, and mobile app.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0 <21.0.0"
+  },
+  "scripts": {
+    "dev": "npm run kill-ports && concurrently -n be,admin,mobile -c blue,magenta,green \"npm run dev -w @livo/backend\" \"npm run dev -w @livo/admin\" \"npm run start -w @livo/mobile\"",
+    "dev:be": "npm run dev -w @livo/backend",
+    "dev:admin": "npm run dev -w @livo/admin",
+    "dev:mobile": "npm run start -w @livo/mobile",
+    "build:admin": "npm run build -w @livo/admin",
+    "kill-ports": "npx kill-port 3000 3001 8081 || true",
+    "install:all": "npm install",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:booking:gate": "npm run test:booking:gate -w @livo/backend",
+    "test:rules:traceability": "npm run test:rules:traceability -w @livo/backend",
+    "test:rules": "npm run test:rules -w @livo/backend",
+    "test:date:contract": "npm run test:date:contract -w @livo/backend",
+    "test:be:rules": "npm run test:rules -w @livo/backend",
+    "test:fe:booking": "npm run test:booking -w @livo/mobile",
+    "test:admin:booking": "npm run test:booking -w @livo/admin"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0",
+    "kill-port": "^2.0.1"
+  }
+}

@@ -1,0 +1,108 @@
+name: PR checks
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: pr-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck admin
+        run: npx tsc --noEmit
+        working-directory: apps/admin
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint admin
+        run: npm run lint -w @livo/admin
+        continue-on-error: false
+
+      - name: Lint mobile
+        run: npm run lint -w @livo/mobile
+        continue-on-error: false
+
+  booking-gate:
+    name: Booking quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      MONGO_URI: mongodb://127.0.0.1:27017/livo_ci
+      MONGODB_URI: mongodb://127.0.0.1:27017/livo_ci
+      JWT_SECRET: ci-test-secret
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rule traceability
+        run: npm run test:rules:traceability
+
+      - name: Backend booking rules
+        run: npm run test:be:rules
+
+      - name: Date contract matrix (5 timezones)
+        run: |
+          set -euo pipefail
+          for TZ in UTC America/Bogota America/Los_Angeles Europe/Madrid Pacific/Auckland; do
+            echo "::group::TZ=$TZ"
+            TZ="$TZ" npm run test:date:contract
+            echo "::endgroup::"
+          done
+
+      - name: Mobile booking tests
+        run: npm run test:fe:booking
+
+      - name: Admin booking tests
+        run: npm run test:admin:booking
