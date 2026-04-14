@@ -1,0 +1,50 @@
+{
+  "name": "asset-booking-system",
+  "version": "1.0.0",
+  "description": "A system for managing shared asset bookings",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node src/utils/seeder.js",
+    "demo-data": "node tools/setup-demo-data.js",
+    "list-users": "node tools/list-all-users.js",
+    "check-testuser1": "node tools/check-testuser1-bookings.js",
+    "create-june-bookings": "node tools/create-june-test-bookings.js",
+    "diagnose-june": "node tools/diagnose-june-booking.js",
+    "fix-june-special-dates": "node tools/fix-june-special-dates.js",
+    "sync-special-dates": "node tools/sync-all-special-dates.js",
+    "test": "jest --runInBand",
+    "test:rules:traceability": "node scripts/verify-rule-traceability.mjs",
+    "test:rules": "jest --runInBand tests/booking-rules",
+    "test:date:contract": "jest --runInBand tests/date-contract",
+    "test:booking:gate": "npm run test:rules:traceability && npm run test:rules && npm run test:date:contract"
+  },
+  "keywords": [
+    "booking",
+    "assets",
+    "management"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.5.1",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.5.0",
+    "express-validator": "^7.0.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^7.5.0",
+    "morgan": "^1.10.0",
+    "multer": "^2.0.2",
+    "nodemailer": "^6.9.4"
+  },
+  "devDependencies": {
+    "jest": "^30.0.5",
+    "nodemon": "^3.0.1",
+    "supertest": "^7.1.1"
+  }
+}
