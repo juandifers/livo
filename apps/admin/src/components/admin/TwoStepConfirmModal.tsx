@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 
 type ConfirmDetail = {
   label: string;
@@ -44,16 +44,21 @@ export default function TwoStepConfirmModal({
 }: TwoStepConfirmModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [typedKeyword, setTypedKeyword] = useState('');
+  const [prevOpen, setPrevOpen] = useState(open);
 
   const normalizedKeyword = useMemo(() => keyword.trim().toUpperCase(), [keyword]);
   const requiresKeyword = normalizedKeyword.length > 0;
   const canConfirm = !pending && (!requiresKeyword || typedKeyword.trim().toUpperCase() === normalizedKeyword);
 
-  useEffect(() => {
-    if (!open) return;
-    setStep(1);
-    setTypedKeyword('');
-  }, [open]);
+  // Reset to step 1 whenever the modal opens.
+  // "Adjusting state on prop change" pattern — no effect needed.
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) {
+      setStep(1);
+      setTypedKeyword('');
+    }
+  }
 
   if (!open) return null;
 
