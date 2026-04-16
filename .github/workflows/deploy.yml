@@ -18,7 +18,7 @@ jobs:
         uses: lewagon/wait-on-check-action@v1.3.4
         with:
           ref: ${{ github.sha }}
-          running-workflow-name: 'Deploy'
+          running-workflow-name: 'Wait for PR checks'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 20
           allowed-conclusions: success
