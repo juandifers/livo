@@ -3,6 +3,8 @@ const es: Record<string, string> = {
   'Dashboard': 'Panel',
   'Users': 'Usuarios',
   'Assets': 'Activos',
+  'Upcoming bookings': 'Reservas proximas',
+  'Special dates': 'Fechas especiales',
   'Special Dates': 'Fechas especiales',
   'Change Password': 'Cambiar contrasena',
   'Language': 'Idioma',
