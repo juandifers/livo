@@ -404,32 +404,32 @@ export default function UsersTableClient({ users }: { users: User[] }) {
             {loadingEditUser ? (
               <div className="text-sm text-slate-600 mb-4">{t('Loading user details...')}</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-5">
-                <div className="rounded-lg border bg-slate-50 p-3">
-                  <div className="text-xs text-slate-500">{t('Name')}</div>
-                  <div className="text-sm font-medium text-slate-900">{fullName(editingUser)}</div>
+              <dl className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 mb-5 border-t border-b border-slate-200 py-4">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">{t('Name')}</dt>
+                  <dd className="text-sm text-slate-900 mt-0.5">{fullName(editingUser)}</dd>
                 </div>
-                <div className="rounded-lg border bg-slate-50 p-3">
-                  <div className="text-xs text-slate-500">{t('Email')}</div>
-                  <div className="text-sm font-medium text-slate-900 break-all">{editingUser.email || '—'}</div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">{t('Email')}</dt>
+                  <dd className="text-sm text-slate-900 mt-0.5 break-all">{editingUser.email || '—'}</dd>
                 </div>
-                <div className="rounded-lg border bg-slate-50 p-3">
-                  <div className="text-xs text-slate-500">{t('Phone Number')}</div>
-                  <div className="text-sm font-medium text-slate-900">{editingUser.phoneNumber || t('Not provided')}</div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">{t('Phone Number')}</dt>
+                  <dd className="text-sm text-slate-900 mt-0.5">{editingUser.phoneNumber || t('Not provided')}</dd>
                 </div>
-                <div className="rounded-lg border bg-slate-50 p-3">
-                  <div className="text-xs text-slate-500">{t('Status')}</div>
-                  <div className="text-sm font-medium text-slate-900">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">{t('Status')}</dt>
+                  <dd className="text-sm text-slate-900 mt-0.5">
                     {editingUser.isActive ? t('Active') : t('Pending setup')}
-                  </div>
+                  </dd>
                 </div>
-                <div className="rounded-lg border bg-slate-50 p-3">
-                  <div className="text-xs text-slate-500">{t('Role')}</div>
-                  <div className="text-sm font-medium text-slate-900">{editingUser.role || 'user'}</div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">{t('Role')}</dt>
+                  <dd className="text-sm text-slate-900 mt-0.5">{editingUser.role || 'user'}</dd>
                 </div>
-                <div className="rounded-lg border bg-slate-50 p-3">
-                  <div className="text-xs text-slate-500">{t('Preferred contact')}</div>
-                  <div className="text-sm font-medium text-slate-900">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide text-slate-500">{t('Preferred contact')}</dt>
+                  <dd className="text-sm text-slate-900 mt-0.5">
                     {editingUser.communicationPreferences
                       ? [
                           editingUser.communicationPreferences.phone ? t('Phone') : null,
@@ -438,9 +438,9 @@ export default function UsersTableClient({ users }: { users: User[] }) {
                           .filter(Boolean)
                           .join(', ') || t('Not set')
                       : t('Not set')}
-                  </div>
+                  </dd>
                 </div>
-              </div>
+              </dl>
             )}
 
             <div className="flex flex-wrap gap-2">
