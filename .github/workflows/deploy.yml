@@ -9,8 +9,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  detect-changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      admin: ${{ steps.filter.outputs.admin }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+      any_deploy: ${{ steps.filter.outputs.backend == 'true' || steps.filter.outputs.admin == 'true' || steps.filter.outputs.mobile == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # NOTE: If you add a new workspace under packages/, add it to the
+          # relevant filter sets below so changes to it trigger deploys.
+          filters: |
+            backend:
+              - 'apps/backend/**'
+              - 'packages/contracts/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+              - '.github/workflows/deploy.yml'
+              - '.github/workflows/pr-checks.yml'
+            admin:
+              - 'apps/admin/**'
+              - 'packages/contracts/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+              - '.github/workflows/deploy.yml'
+              - '.github/workflows/pr-checks.yml'
+            mobile:
+              - 'apps/mobile/**'
+              - 'packages/contracts/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.nvmrc'
+              - '.github/workflows/deploy.yml'
+              - '.github/workflows/pr-checks.yml'
+
   wait-for-checks:
     name: Wait for PR checks
+    needs: detect-changes
+    if: needs.detect-changes.outputs.any_deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -25,7 +70,8 @@ jobs:
 
   deploy-backend:
     name: Deploy backend to Vercel
-    needs: wait-for-checks
+    needs: [detect-changes, wait-for-checks]
+    if: needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -54,7 +100,8 @@ jobs:
 
   deploy-admin:
     name: Deploy admin to Vercel
-    needs: wait-for-checks
+    needs: [detect-changes, wait-for-checks]
+    if: needs.detect-changes.outputs.admin == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -83,7 +130,8 @@ jobs:
 
   eas-update:
     name: EAS Update (OTA)
-    needs: wait-for-checks
+    needs: [detect-changes, wait-for-checks]
+    if: needs.detect-changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
