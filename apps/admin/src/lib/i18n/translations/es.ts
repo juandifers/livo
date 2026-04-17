@@ -75,6 +75,8 @@ const es: Record<string, string> = {
   'Last Name': 'Apellido',
   'Phone Number': 'Telefono',
   'Search by name or email': 'Buscar por nombre o correo',
+  'Search by name, email, or phone': 'Buscar por nombre, correo o telefono',
+  '{{filtered}} of {{total}} users': '{{filtered}} de {{total}} usuarios',
   'View bookings': 'Ver reservas',
   'Reset password': 'Restablecer contrasena',
   'Resend setup': 'Reenviar configuracion',

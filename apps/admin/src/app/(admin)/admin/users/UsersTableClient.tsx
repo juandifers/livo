@@ -275,21 +275,24 @@ export default function UsersTableClient({ users }: { users: User[] }) {
         </div>
       )}
 
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 flex-1 max-w-xl">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('Search by name, email, or phone')}
-            className="w-full max-w-md border rounded-lg px-3 py-2 bg-white shadow-sm"
+            className="flex-1 min-w-0 border rounded-lg px-3 py-2 bg-white shadow-sm"
           />
-          <span className="text-sm text-slate-500">
-            {filtered.length} / {userRows.length}
+          <span className="text-sm text-slate-500 whitespace-nowrap">
+            {t('{{filtered}} of {{total}} users', {
+              filtered: filtered.length,
+              total: userRows.length,
+            })}
           </span>
         </div>
         <button
           onClick={() => setShowCreateUser(true)}
-          className="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800"
+          className="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 whitespace-nowrap"
         >
           {t('Create User')}
         </button>
