@@ -34,6 +34,9 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
   const [applyToAllAssets, setApplyToAllAssets] = useState(true);
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [dateError, setDateError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<SpecialDate | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     // Fetch assets for the dropdown
@@ -118,19 +121,18 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
   };
 
   const handleDeleteSpecialDate = async (id: string) => {
-    if (!confirm(t('Are you sure you want to delete this special date?'))) {
-      return;
-    }
-
+    setDeletingId(id);
+    setDeleteError(null);
     try {
       await clientFetchJson(`/bookings/special-dates/${id}`, {
         method: 'DELETE',
       });
-
-      // Remove from local state
       setSpecialDates(prev => prev.filter(sd => sd._id !== id));
+      setConfirmDelete(null);
     } catch (err: any) {
-      alert(mapCommonApiError(locale, err?.message || 'Failed to delete special date', 'Error'));
+      setDeleteError(mapCommonApiError(locale, err?.message || 'Failed to delete special date', 'Error'));
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -356,7 +358,10 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
                 </td>
                 <td className="p-3">
                   <button
-                    onClick={() => handleDeleteSpecialDate(sd._id)}
+                    onClick={() => {
+                      setConfirmDelete(sd);
+                      setDeleteError(null);
+                    }}
                     className="text-red-600 hover:text-red-800 text-sm"
                   >
                     {t('Delete')}
@@ -374,6 +379,47 @@ export default function SpecialDatesTableClient({ specialDates: initialSpecialDa
           </tbody>
         </table>
       </div>
+
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl border w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              {t('Delete special date?')}
+            </h3>
+            <p className="text-sm text-slate-600 mb-4">
+              {t('This will permanently remove "{{name}}". This action cannot be undone.', {
+                name: confirmDelete.name,
+              })}
+            </p>
+            {deleteError && (
+              <div className="mb-4 text-sm text-red-600 bg-red-50 p-3 rounded">
+                {deleteError}
+              </div>
+            )}
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmDelete(null);
+                  setDeleteError(null);
+                }}
+                disabled={deletingId === confirmDelete._id}
+                className="px-4 py-2 text-sm rounded border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                {t('Cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteSpecialDate(confirmDelete._id)}
+                disabled={deletingId === confirmDelete._id}
+                className="px-4 py-2 text-sm rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingId === confirmDelete._id ? t('Deleting...') : t('Delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
